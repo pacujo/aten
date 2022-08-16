@@ -11,7 +11,7 @@ use std::io::{Error, Result};
 use std::option::Option;
 use std::os::unix::io::RawFd;
 use std::rc::{Rc, Weak};
-use r3::TRACE;
+use r3::{TRACE, errsym};
 
 pub type UID = r3::UID;
 pub type Action = Rc<dyn Fn()>;
@@ -382,7 +382,7 @@ impl Disk {
         let poll_fd = unsafe { libc::epoll_create1(libc::EPOLL_CLOEXEC) };
         if poll_fd < 0 {
             let err = Error::last_os_error();
-            TRACE!(ATEN_DISK_EPOLL_CREATE_FAILED { ERR: err });
+            TRACE!(ATEN_DISK_EPOLL_CREATE_FAILED { ERR: errsym(&err) });
             return Err(err);
         }
         let uid = UID::new();
@@ -594,7 +594,7 @@ impl Disk {
     fn sleep(&self, until: Time) -> Result<()> {
         if let Err(err) = epoll_wait(
             self.fd(), &mut vec![], self.milliseconds_remaining(until, None)) {
-            TRACE!(ATEN_DISK_SLEEP_FAIL { DISK: self });
+            TRACE!(ATEN_DISK_SLEEP_FAIL { DISK: self, ERR: errsym(&err) });
             return Err(err);
         }
         Ok(())
@@ -608,7 +608,7 @@ impl Disk {
         }];
         match epoll_wait(self.fd(), &mut epoll_events, 0) {
             Err(err) => {
-                TRACE!(ATEN_DISK_POLL_FAIL { DISK: self, ERR: err });
+                TRACE!(ATEN_DISK_POLL_FAIL { DISK: self, ERR: errsym(&err) });
                 return Err(err);
             }
             Ok(0) => {
@@ -696,7 +696,9 @@ impl Disk {
             (lock)();
             match result {
                 Err(err) => {
-                    TRACE!(ATEN_DISK_LOOP_FAIL { DISK: self, ERR: err });
+                    TRACE!(ATEN_DISK_LOOP_FAIL {
+                        DISK: self, ERR: errsym(&err)
+                    });
                     return Err(err);
                 }
                 Ok(count) => {
@@ -733,7 +735,9 @@ impl Disk {
         };
         if status < 0 {
             let err = Error::last_os_error();
-            TRACE!(ATEN_DISK_PROTECTED_LOOP_FAIL { DISK: self, ERR: err });
+            TRACE!(ATEN_DISK_PROTECTED_LOOP_FAIL {
+                DISK: self, ERR: errsym(&err)
+            });
             return Err(err);
         }
         TRACE!(ATEN_DISK_PROTECTED_LOOP { DISK: self });
@@ -773,7 +777,7 @@ impl Disk {
         if let Err(err) = nonblock(fd) {
             TRACE!(ATEN_DISK_REGISTER_NONBLOCK_FAIL {
                 DISK: self, FD: fd, FLAGS: r3::hex(flags as u64),
-                ACTION: action_to_string(&action), ERR: err,
+                ACTION: action_to_string(&action), ERR: errsym(&err),
             });
             return Err(err);
         }
@@ -788,7 +792,7 @@ impl Disk {
             let err = Error::last_os_error();
             TRACE!(ATEN_DISK_REGISTER_FAIL {
                 DISK: self, FD: fd, FLAGS: r3::hex(flags as u64),
-                ACTION: action_to_string(&action), ERR: err,
+                ACTION: action_to_string(&action), ERR: errsym(&err),
             });
             return Err(err);
         }
@@ -838,7 +842,7 @@ impl Disk {
             let err = Error::last_os_error();
             TRACE!(ATEN_DISK_MODIFY_OLD_SCHOOL_FAIL {
                 DISK: self, FD: fd, READABLE: readable, WRITABLE: writable,
-                ERR: err
+                ERR: errsym(&err)
             });
             return Err(err);
         }
@@ -861,7 +865,9 @@ impl Disk {
         };
         if status < 0 {
             let err = Error::last_os_error();
-            TRACE!(ATEN_DISK_UNREGISTER_FAIL { DISK: self, FD: fd, ERR: err });
+            TRACE!(ATEN_DISK_UNREGISTER_FAIL {
+                DISK: self, FD: fd, ERR: errsym(&err)
+            });
             return Err(err);
         }
         TRACE!(ATEN_DISK_UNREGISTER { DISK: self, FD: fd });
@@ -885,7 +891,9 @@ impl Disk {
                     }
                 }
                 Err(err) => {
-                    TRACE!(ATEN_DISK_FLUSH_FAIL { DISK: self, ERR: err });
+                    TRACE!(ATEN_DISK_FLUSH_FAIL {
+                        DISK: self, ERR: errsym(&err)
+                    });
                     return Err(err);
                 }
             }

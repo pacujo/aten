@@ -24,11 +24,10 @@ impl ByteStreamBody for DryStreamBody {
             });
             return Ok(n);
         }
-        let err = Error::from_raw_os_error(libc::EAGAIN);
         TRACE!(ATEN_DRYSTREAM_READ_FAIL {
-            STREAM: self, WANT: buf.len(), ERR: err
+            STREAM: self, WANT: buf.len(), ERR: "EAGAIN"
         });
-        Err(err)
+        Err(Error::from_raw_os_error(libc::EAGAIN))
     }
 
     fn close(&mut self) {
