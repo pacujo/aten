@@ -6,7 +6,8 @@ use std::io::{Result, Error};
 use crate::{Action, Disk, Link, UID, WeakLink};
 use crate::{again, is_again};
 use crate::stream::{ByteStream, BaseStreamBody, ByteStreamBody};
-use crate::stream::{DebuggableByteStreamBody, close_relaxed};
+use crate::stream::{DebuggableByteStreamBody, close_relaxed, callback_to_string};
+use r3::TRACE;
 
 pub struct QueueStreamBody {
     base: BaseStreamBody,
@@ -17,10 +18,18 @@ pub struct QueueStreamBody {
     notification_expected: bool,
 }
 
+impl std::fmt::Display for QueueStreamBody {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.base)
+    }
+} // impl std::fmt::Display for QueueStreamBody
+
 impl ByteStreamBody for QueueStreamBody {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         if let Ok(n) = self.base.read(buf) {
-            //FSTRACE(ASYNC_QUEUESTREAM_READ, count);
+            TRACE!(ATEN_QUEUESTREAM_READ_TRIVIAL {
+                STREAM: self, WANT: buf.len()
+            });
             return Ok(n);
         }
         if let Some(err) = self.pending_error.take() {
@@ -53,9 +62,13 @@ impl ByteStreamBody for QueueStreamBody {
                 }
             }
         }
-        //FSTRACE(ASYNC_QUEUESTREAM_READ, qstr->uid, count, n);
+        TRACE!(ATEN_QUEUESTREAM_READ {
+            STREAM: self, WANT: buf.len(), GOT: cursor
+        });
         if cursor > 0 {
-            //FSTRACE(ASYNC_QUEUESTREAM_READ_DUMP, qstr->uid, buf, n);
+            TRACE!(ATEN_QUEUESTREAM_READ_DUMP {
+                STREAM: self, DATA: r3::octets(&buf[..cursor])
+            });
             Ok(cursor)
         } else if self.terminated {
             Ok(0)
@@ -65,12 +78,14 @@ impl ByteStreamBody for QueueStreamBody {
     }
 
     fn close(&mut self) {
-        //FSTRACE(ASYNC_QUEUESTREAM_CLOSE, count);
+        TRACE!(ATEN_QUEUESTREAM_CLOSE { STREAM: self });
         self.base.close();
     }
 
     fn register(&mut self, callback: Option<Action>) {
-        //FSTRACE(ASYNC_QUEUESTREAM_REGISTER, count);
+        TRACE!(ATEN_QUEUESTREAM_REGISTER {
+            STREAM: self, CALLBACK: callback_to_string(&callback)
+        });
         self.base.register(callback);
     }
 } // impl ByteStreamBody for QueueStreamBody 
@@ -93,10 +108,16 @@ impl DebuggableByteStreamBody for QueueStreamBody {}
 #[derive(Debug)]
 pub struct QueueStream(Link<QueueStreamBody>);
 
+impl std::fmt::Display for QueueStream {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0.uid)
+    }
+} // impl std::fmt::Display for QueueStream
+
 impl QueueStream {
     pub fn new(disk: &Disk) -> QueueStream {
-        //FSTRACE(ASYNC_QUEUESTREAM_CREATE, qstr->uid, qstr, async);
         let uid = UID::new();
+        TRACE!(ATEN_QUEUESTREAM_CREATE { DISK: disk, STREAM: uid });
         let body = Rc::new(RefCell::new(QueueStreamBody {
             base: BaseStreamBody::new(
                 disk.downgrade(), uid),
@@ -166,15 +187,15 @@ impl QueueStream {
     }
 
     pub fn enqueue(&self, other: &ByteStream) {
-        //FSTRACE(ASYNC_QUEUESTREAM_ENQUEUE, qstr->uid, other.obj);
         assert!(!self.0.body.borrow().terminated);
         if self.0.body.borrow().base.is_closed() {
-            //FSTRACE(ASYNC_QUEUESTREAM_ENQUEUE_POSTHUMOUSLY,
-            //        qstr->uid, other.obj);
+            TRACE!(ATEN_QUEUESTREAM_ENQUEUE_POSTHUMOUSLY {
+                STREAM: self, OTHER: other
+            });
             close_relaxed(self.0.body.borrow().base.get_weak_disk(), other);
             return;
         }
-        //FSTRACE(ASYNC_QUEUESTREAM_ENQUEUE, qstr->uid, other.obj);
+        TRACE!(ATEN_QUEUESTREAM_ENQUEUE { STREAM: self, OTHER: other });
         self.0.body.borrow_mut().queue.push_back(other.clone());
         other.register(Some(self.make_notifier()));
         self.0.body.borrow().base.get_weak_disk().upped(
@@ -204,9 +225,14 @@ impl WeakQueueStream {
         match self.upgrade() {
             Some(stream) => { f(&stream); }
             None => {
-                //let _ = format!("{:?}", std::ptr::addr_of!(f));
-                //FSTRACE(ATEN_UPPED_MISS, );
+                TRACE!(ATEN_QUEUESTREAM_UPPED_MISS { STREAM: self });
             }
         };
     }
 } // impl WeakQueueStream
+
+impl std::fmt::Display for WeakQueueStream {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0.uid)
+    }
+} // std::fmt::Display for WeakQueueStream

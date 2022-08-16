@@ -7,4 +7,6 @@ license = "Apache-2.0"
 repository = "https://github.com/pacujo/aten"
 
 [dependencies]
+lazy_static = "1.4"
 libc = "0.2"
+r3 = { git = "https://github.com/pacujo/r3" }

@@ -10,6 +10,12 @@ pub struct BaseStreamBody {
     callback: Option<Action>,
 }
 
+impl std::fmt::Display for BaseStreamBody {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.uid)
+    }
+} // impl std::fmt::Display for BaseStreamBody
+
 impl BaseStreamBody {
     pub fn new(weak_disk: WeakDisk, uid: UID) -> BaseStreamBody {
         BaseStreamBody {

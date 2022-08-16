@@ -4,28 +4,42 @@ use std::io::{Result, Error};
 
 use crate::{Action, Disk, Link, UID};
 use crate::stream::{ByteStream, BaseStreamBody, ByteStreamBody};
-use crate::stream::{DebuggableByteStreamBody};
+use crate::stream::{DebuggableByteStreamBody, callback_to_string};
+use r3::TRACE;
 
 #[derive(Debug)]
 struct DryStreamBody(BaseStreamBody);
 
+impl std::fmt::Display for DryStreamBody {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+} // impl std::fmt::Display for DryStreamBody
+
 impl ByteStreamBody for DryStreamBody {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         if let Ok(n) = self.0.read(buf) {
-            //FSTRACE(ASYNC_DRYSTREAM_READ, count);
+            TRACE!(ATEN_DRYSTREAM_READ_TRIVIAL {
+                STREAM: self, WANT: buf.len()
+            });
             return Ok(n);
         }
-        //FSTRACE(ASYNC_DRYSTREAM_READ, count);
-        Err(Error::from_raw_os_error(libc::EAGAIN))
+        let err = Error::from_raw_os_error(libc::EAGAIN);
+        TRACE!(ATEN_DRYSTREAM_READ_FAIL {
+            STREAM: self, WANT: buf.len(), ERR: err
+        });
+        Err(err)
     }
 
     fn close(&mut self) {
-        //FSTRACE(ASYNC_DRYSTREAM_CLOSE, count);
+        TRACE!(ATEN_DRYSTREAM_CLOSE { STREAM: self });
         self.0.close();
     }
 
     fn register(&mut self, callback: Option<Action>) {
-        //FSTRACE(ASYNC_DRYSTREAM_REGISTER, count);
+        TRACE!(ATEN_DRYSTREAM_REGISTER {
+            STREAM: self, CALLBACK: callback_to_string(&callback)
+        });
         self.0.register(callback);
     }
 } // impl ByteStreamBody for DryStreamBody
@@ -37,8 +51,8 @@ pub struct DryStream(Link<DryStreamBody>);
 
 impl DryStream {
     pub fn new(disk: &Disk) -> DryStream {
-        //FSTRACE(ASYNC_DRYSTREAM_CREATE, qstr->uid, qstr, async);
         let uid = UID::new();
+        TRACE!(ATEN_DRYSTREAM_CREATE { DISK: disk, STREAM: uid });
         let body = DryStreamBody(BaseStreamBody::new(
             disk.downgrade(), uid));
         DryStream(Link {

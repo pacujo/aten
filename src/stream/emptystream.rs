@@ -4,24 +4,35 @@ use std::io::Result;
 
 use crate::{Action, Disk, Link, UID};
 use crate::stream::{ByteStream, BaseStreamBody, ByteStreamBody};
-use crate::stream::{DebuggableByteStreamBody};
+use crate::stream::{DebuggableByteStreamBody, callback_to_string};
+use r3::TRACE;
 
 #[derive(Debug)]
 struct EmptyStreamBody(BaseStreamBody);
 
+impl std::fmt::Display for EmptyStreamBody {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+} // impl std::fmt::Display for EmptyStreamBody
+
 impl ByteStreamBody for EmptyStreamBody {
-    fn read(&mut self, _buf: &mut [u8]) -> Result<usize> {
-        //FSTRACE(ASYNC_EMPTYSTREAM_READ, count);
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+        TRACE!(ATEN_EMPTYSTREAM_READ {
+            STREAM: self, WANT: buf.len(), GOT: 0
+        });
         Ok(0)
     }
 
     fn close(&mut self) {
-        //FSTRACE(ASYNC_EMPTYSTREAM_CLOSE, count);
+        TRACE!(ATEN_EMPTYSTREAM_CLOSE { STREAM: self });
         self.0.close();
     }
 
     fn register(&mut self, callback: Option<Action>) {
-        //FSTRACE(ASYNC_EMPTYSTREAM_REGISTER, count);
+        TRACE!(ATEN_EMPTYSTREAM_REGISTER {
+            STREAM: self, CALLBACK: callback_to_string(&callback)
+        });
         self.0.register(callback);
     }
 } // impl ByteStreamBody for EmptyStreamBody
@@ -33,8 +44,8 @@ pub struct EmptyStream(Link<EmptyStreamBody>);
 
 impl EmptyStream {
     pub fn new(disk: &Disk) -> EmptyStream {
-        //FSTRACE(ASYNC_EMPTYSTREAM_CREATE, qstr->uid, qstr, async);
         let uid = UID::new();
+        TRACE!(ATEN_EMPTYSTREAM_CREATE { DISK: disk, STREAM: uid });
         let body = EmptyStreamBody(BaseStreamBody::new(
             disk.downgrade(), uid));
         EmptyStream(Link {

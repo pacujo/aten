@@ -4,31 +4,44 @@ use std::io::Result;
 
 use crate::{Action, Disk, Link, UID};
 use crate::stream::{ByteStream, BaseStreamBody, ByteStreamBody};
-use crate::stream::{DebuggableByteStreamBody};
+use crate::stream::{DebuggableByteStreamBody, callback_to_string};
+use r3::TRACE;
 
 #[derive(Debug)]
 struct ZeroStreamBody(BaseStreamBody);
 
+impl std::fmt::Display for ZeroStreamBody {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+} // impl std::fmt::Display for ZeroStreamBody
+
 impl ByteStreamBody for ZeroStreamBody {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         if let Ok(n) = self.0.read(buf) {
-            //FSTRACE(ASYNC_ZEROSTREAM_READ, count);
+            TRACE!(ATEN_ZEROSTREAM_READ_TRIVIAL {
+                STREAM: self, WANT: buf.len()
+            });
             return Ok(n);
         }
         for slot in &mut buf.iter_mut() {
             *slot = 0;
         }
-        //FSTRACE(ASYNC_ZEROSTREAM_READ, count);
+        TRACE!(ATEN_ZEROSTREAM_READ {
+            STREAM: self, WANT: buf.len(), GOT: buf.len()
+        });
         Ok(buf.len())
     }
 
     fn close(&mut self) {
-        //FSTRACE(ASYNC_ZEROSTREAM_CLOSE, count);
+        TRACE!(ATEN_ZEROSTREAM_CLOSE { STREAM: self });
         self.0.close();
     }
 
     fn register(&mut self, callback: Option<Action>) {
-        //FSTRACE(ASYNC_ZEROSTREAM_REGISTER, count);
+        TRACE!(ATEN_ZEROSTREAM_REGISTER {
+            STREAM: self, CALLBACK: callback_to_string(&callback)
+        });
         self.0.register(callback);
     }
 } // impl ByteStreamBody for ZeroStreamBody 
@@ -40,8 +53,8 @@ pub struct ZeroStream(Link<ZeroStreamBody>);
 
 impl ZeroStream {
     pub fn new(disk: &Disk) -> ZeroStream {
-        //FSTRACE(ASYNC_ZEROSTREAM_CREATE, qstr->uid, qstr, async);
         let uid = UID::new();
+        TRACE!(ATEN_ZEROSTREAM_CREATE { DISK: disk, STREAM: uid });
         let body = ZeroStreamBody(BaseStreamBody::new(
             disk.downgrade(), uid));
         ZeroStream(Link {

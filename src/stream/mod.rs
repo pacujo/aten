@@ -5,6 +5,25 @@ use std::io::Result;
 use std::rc::Rc;
 
 use crate::{Action, Link, UID, WeakDisk, WeakLink};
+use crate::{format_action, action_to_string};
+use r3::TRACE;
+
+pub fn format_callback(f: &mut std::fmt::Formatter, callback: &Option<Action>)
+                       -> std::fmt::Result {
+    if let Some(action) = callback {
+        format_action(f, &action)
+    } else {
+        Ok(())
+    }
+}
+
+pub fn callback_to_string(callback: &Option<Action>) -> String {
+    if let Some(action) = callback {
+        action_to_string(action)
+    } else {
+        "".to_string()
+    }
+}
 
 pub struct ByteStream(Link<dyn ByteStreamBody>);
 
@@ -36,6 +55,12 @@ impl ByteStream {
     }
 } // impl ByteStream
 
+impl std::fmt::Display for ByteStream {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0.uid)
+    }
+} // impl std::fmt::Display for ByteStream
+
 impl std::clone::Clone for ByteStream {
     fn clone(&self) -> Self {
         ByteStream::new(self.0.uid, self.0.body.clone())
@@ -52,6 +77,12 @@ impl std::fmt::Debug for ByteStream {
 
 pub struct WeakByteStream(WeakLink<dyn ByteStreamBody>);
 
+impl std::fmt::Display for WeakByteStream {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0.uid)
+    }
+} // impl std::fmt::Display for WeakByteStream
+
 impl WeakByteStream {
     pub fn upgrade(&self) -> Option<ByteStream> {
         self.0.body.upgrade().map(|body|
@@ -65,8 +96,7 @@ impl WeakByteStream {
         match self.upgrade() {
             Some(stream) => { f(&stream); }
             None => {
-                //let _ = format!("{:?}", std::ptr::addr_of!(f));
-                //FSTRACE(ATEN_UPPED_MISS, );
+                TRACE!(ATEN_BYTESTREAM_UPPED_MISS { STREAM: self });
             }
         };
     }

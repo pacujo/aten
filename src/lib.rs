@@ -1,5 +1,8 @@
 #![allow(dead_code)]
 
+#[macro_use]
+extern crate lazy_static;
+
 pub mod stream;
 
 use std::cell::{Ref, RefCell, RefMut};
@@ -8,8 +11,19 @@ use std::io::{Error, Result};
 use std::option::Option;
 use std::os::unix::io::RawFd;
 use std::rc::{Rc, Weak};
+use r3::TRACE;
 
+pub type UID = r3::UID;
 pub type Action = Rc<dyn Fn()>;
+
+pub fn format_action(f: &mut std::fmt::Formatter, action: &Action)
+                     -> std::fmt::Result {
+    write!(f, "{:?}", Rc::as_ptr(action))
+}
+
+pub fn action_to_string(action: &Action) -> String {
+    format!("{:?}", Rc::as_ptr(action))
+}
 
 #[derive(Debug, Copy, Clone)]
 pub struct Time(u64);
@@ -95,20 +109,9 @@ impl std::ops::Sub for Time {
     }
 } // impl std::ops::Sub for Time
 
-fn format_in_threes(f: &mut std::fmt::Formatter, n: u64) -> std::fmt::Result {
-    if n >= 1000 {
-        format_in_threes(f, n / 1000)?;
-        write!(f, "_{:03}", n % 1000)
-    } else {
-        write!(f, "{}", n)
-    }
-}
-
 impl std::fmt::Display for Time {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Time(")?;
-        format_in_threes(f, self.0)?;
-        write!(f, ")")
+        r3::format_in_threes(f, self.0)
     }
 } // impl std::fmt::Display for Time
 
@@ -254,73 +257,9 @@ impl std::ops::Mul<Duration> for i64 {
 
 impl std::fmt::Display for Duration {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Time(")?;
-        if self.0 < 0 {
-            write!(f, "-")?;
-            format_in_threes(f, -self.0 as u64)?;
-        } else {
-            format_in_threes(f, self.0 as u64)?;
-        }
-        write!(f, ")")
+        r3::format_in_threes_signed(f, self.0)
     }
 } // impl std::fmt::Display for Duration
-
-#[derive(Debug, Copy, Clone)]
-pub struct UID(u64);
-
-impl UID {
-    pub fn new() -> UID {
-        UID(0)                  // TODO
-    }
-} // impl UID
-
-impl PartialEq for UID {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
-} // impl PartialEq for UID
-
-impl Eq for UID {}
-
-impl PartialOrd for UID {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.0.partial_cmp(&other.0)
-    }
-
-    fn lt(&self, other: &Self) -> bool {
-        self.0.lt(&other.0)
-    }
-
-    fn le(&self, other: &Self) -> bool {
-        self.0.le(&other.0)
-    }
-
-    fn gt(&self, other: &Self) -> bool {
-        self.0.gt(&other.0)
-    }
-
-    fn ge(&self, other: &Self) -> bool {
-        self.0.ge(&other.0)
-    }
-}
-
-impl Ord for UID {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.cmp(&other.0)
-    }
-
-    fn max(self, other: Self) -> Self {
-        UID(self.0.max(other.0))
-    }
-
-    fn min(self, other: Self) -> Self {
-        UID(self.0.min(other.0))
-    }
-
-    fn clamp(self, min: Self, max: Self) -> Self {
-        UID(self.0.clamp(min.0, max.0))
-    }
-} // impl Ord for UID
 
 #[derive(Debug)]
 struct Link<Body: ?Sized> {
@@ -366,7 +305,7 @@ pub struct Timer(WeakLink<TimerBody>);
 
 impl Timer {
     pub fn cancel(&self) {
-        //FSTRACE(ATEN_TIMER_CANCEL, timer->uid);
+        TRACE!(ATEN_TIMER_CANCEL { TIMER: self });
         if let Some(cell) = self.0.body.upgrade() {
             let mut body = cell.borrow_mut();
             if let TimerKind::Scheduled = body.kind {
@@ -391,8 +330,7 @@ impl Timer {
         match self.upgrade() {
             Some(timer) => { f(&timer); }
             None => {
-                //let _ = format!("{:?}", std::ptr::addr_of!(f));
-                //FSTRACE(ATEN_TIMER_UPPED_MISS, );
+                TRACE!(ATEN_TIMER_UPPED_MISS { TIMER: self });
             }
         };
     }
@@ -406,6 +344,12 @@ impl Clone for Timer {
         })
     }
 } // impl Clone for Timer
+
+impl std::fmt::Display for Timer {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0.uid)
+    }
+} // impl std::fmt::Display for Timer
 
 type WeakTimer = Timer;
 
@@ -437,8 +381,9 @@ impl Disk {
     pub fn new() -> Result<Disk> {
         let poll_fd = unsafe { libc::epoll_create1(libc::EPOLL_CLOEXEC) };
         if poll_fd < 0 {
-            //FSTRACE(ATEN_EPOLL_CREATE_FAILED);
-            return Err(Error::last_os_error());
+            let err = Error::last_os_error();
+            TRACE!(ATEN_DISK_EPOLL_CREATE_FAILED { ERR: err });
+            return Err(err);
         }
         let uid = UID::new();
         let body = DiskBody {
@@ -456,7 +401,7 @@ impl Disk {
             body: Rc::new(RefCell::new(body)),
         });
         disk.now();
-        //FSTRACE(ATEN_CREATE, disk->uid, disk, fd);
+        TRACE!(ATEN_DISK_CREATE { DISK: uid, POLL_FD: poll_fd });
         Ok(disk)
     }
 
@@ -475,7 +420,7 @@ impl Disk {
     }
 
     pub fn wake_up(&self) {
-        //FSTRACE(ATEN_WAKE_UP, disk->uid);
+        TRACE!(ATEN_DISK_WAKE_UP { DISK: self });
         if let Some(fd) = self.body().wakeup_fd {
             let dummy_byte = &0u8 as *const _ as *const libc::c_void;
             if unsafe { libc::write(fd, dummy_byte, 1) } < 0 {
@@ -485,10 +430,9 @@ impl Disk {
         }
     }
 
-    fn new_timer(&self, kind: TimerKind, expires: Time, action: Action)
-                 -> (Timer, Rc<RefCell<TimerBody>>, UID) {
+    fn new_timer(&self, uid: UID, kind: TimerKind, expires: Time, action: Action)
+                 -> (Timer, Rc<RefCell<TimerBody>>) {
         self.wake_up();
-        let uid = UID::new();
         let timer_ref = Rc::new(RefCell::new(TimerBody {
             disk_ref: self.downgrade(),
             expires: expires,
@@ -502,40 +446,48 @@ impl Disk {
             uid: uid,
             body: Rc::downgrade(&timer_ref),
         });
-        (timer, timer_ref, uid)
+        (timer, timer_ref)
     }
 
     pub fn execute(&self, action: Action) -> Timer {
-        //FSTRACE(ATEN_EXECUTE, timer->uid, timer, disk, timer->expires,
-        //        action.obj, action.act);
-        let (timer, timer_ref, _) = self.new_timer(
-            TimerKind::Pending, self.body().recent, action);
+        let now = self.body().recent;
+        let timer_uid = UID::new();
+        TRACE!(ATEN_DISK_EXECUTE {
+            DISK: self, TIMER: timer_uid, EXPIRES: now,
+            ACTION: action_to_string(&action),
+        });
+        let (timer, timer_ref) = self.new_timer(
+            timer_uid, TimerKind::Pending, now, action);
         self.mut_body().immediate.push_back(timer_ref);
         timer
     }
 
     pub fn schedule(&self, expires: Time, action: Action) -> Timer {
-        //FSTRACE(ATEN_TIMER_START, timer->uid, timer, disk->uid, expires,
-        //    action.obj, action.act);
-        let (timer, timer_ref, uid) = self.new_timer(
-            TimerKind::Scheduled, expires, action);
-        self.mut_body().timers.insert((expires, uid), timer_ref);
+        let timer_uid = UID::new();
+        TRACE!(ATEN_DISK_SCHEDULE {
+            DISK: self, TIMER: timer_uid, EXPIRES: expires,
+            ACTION: action_to_string(&action),
+        });
+        let (timer, timer_ref) = self.new_timer(
+            timer_uid, TimerKind::Scheduled, expires, action);
+        self.mut_body().timers.insert((expires, timer_uid), timer_ref);
         timer
     }
 
     pub fn make_event(&self, action: Action) -> Event {
-        //FSTRACE(ATEN_EVENT_CREATE, event->uid, event, disk->uid, action.obj,
-        //        action.act);
-        let uid = UID::new();
+        let event_uid = UID::new();
+        TRACE!(ATEN_DISK_EVENT_CREATE {
+            DISK: self, EVENT: event_uid, ACTION: action_to_string(&action),
+        });
         let event_body = EventBody {
             disk_ref: self.downgrade(),
-            uid: uid,
+            uid: event_uid,
             state: EventState::Idle,
             action: Some(action),
             stack_trace: None,  // TODO
         };
         Event(Link {
-            uid: uid,
+            uid: event_uid,
             body: Rc::new(RefCell::new(event_body)),
         })
     }
@@ -578,16 +530,21 @@ impl Disk {
                 NextStep::ImmediateAction => {
                     let mut body = self.mut_body();
                     if let Some(rc) = body.immediate.pop_front() {
-                        //FSTRACE(ATEN_POLL_TIMEOUT, timer->seqno,
-                        //        timer->action.obj, timer->action.act);
-                        //if (FSTRACE_ENABLED(ATEN_TIMER_BT) &&
-                        //    timer->stack_trace)
-                        //    emit_timer_backtrace(timer);
                         let mut timer_body = rc.borrow_mut();
                         if let TimerKind::Canceled = timer_body.kind {
+                            TRACE!(ATEN_DISK_POLL_TIMER_CANCELED {
+                                DISK: self, TIMER: timer_body.uid,
+                            });
                             continue
                         }
                         if let Some(action) = timer_body.action.take() {
+                            TRACE!(ATEN_DISK_POLL_TIMEOUT {
+                                DISK: self, TIMER: timer_body.uid,
+                                ACTION: action_to_string(&action),
+                            });
+                            //if (TRACE_ENABLED!(ATEN_TIMER_BT) &&
+                            //    timer->stack_trace)
+                            //    emit_timer_backtrace(timer);
                             return PoppedTimer::TimerExpired(action);
                         }
                     }
@@ -603,9 +560,13 @@ impl Disk {
                     unreachable!();
                 }
                 NextStep::NextTimerExpiry(expiry) => {
+                    TRACE!(ATEN_DISK_POLL_NEXT_TIMER {
+                        DISK: self, EXPIRY: expiry
+                    });
                     return PoppedTimer::NextTimerExpiry(expiry);
                 }
                 NextStep::InfiniteWait => {
+                    TRACE!(ATEN_DISK_POLL_NO_TIMERS { DISK: self });
                     return PoppedTimer::InfiniteWait;
                 }
             }
@@ -633,7 +594,7 @@ impl Disk {
     fn sleep(&self, until: Time) -> Result<()> {
         if let Err(err) = epoll_wait(
             self.fd(), &mut vec![], self.milliseconds_remaining(until, None)) {
-            //FSTRACE(ATEN_SLEEP_FAIL, disk->uid);
+            TRACE!(ATEN_DISK_SLEEP_FAIL { DISK: self });
             return Err(err);
         }
         Ok(())
@@ -647,22 +608,22 @@ impl Disk {
         }];
         match epoll_wait(self.fd(), &mut epoll_events, 0) {
             Err(err) => {
-                //FSTRACE(ATEN_POLL_FAIL, disk->uid);
+                TRACE!(ATEN_DISK_POLL_FAIL { DISK: self, ERR: err });
                 return Err(err);
             }
             Ok(0) => {
-                //FSTRACE(ATEN_POLL_SPURIOUS, disk->uid);
+                TRACE!(ATEN_DISK_POLL_SPURIOUS { DISK: self });
                 return Ok(Some(next_expiry));
             }
             Ok(_) => {}
         }
         match body.registrations.get(&(epoll_events[0].u64 as RawFd)) {
             Some(event) => {
-                //FSTRACE(ATEN_POLL_EXECUTE, disk->uid, event->uid);
+                TRACE!(ATEN_DISK_POLL_EXECUTE { DISK: self, EVENT: &event });
                 event.trigger();
             }
             None => {
-                //FSTRACE(ATEN_POLL_SPURIOUS_FD, disk->uid);
+                TRACE!(ATEN_DISK_POLL_EXECUTE_SPURIOUS { DISK: self });
             }
         }
         return Ok(Some(body.recent));
@@ -675,18 +636,16 @@ impl Disk {
                 return Ok(Some(self.body().recent));
             }
             PoppedTimer::NextTimerExpiry(expiry) => {
-                //FSTRACE(ATEN_POLL_NEXT_TIMER, disk->uid, timer->expires);
                 return self.try_io(expiry);
             }
             PoppedTimer::InfiniteWait => {
-                //FSTRACE(ATEN_POLL_NO_TIMERS, disk->uid);
                 return Ok(None);
             }
         }
     }
 
     pub fn quit(&self) {
-        //FSTRACE(ATEN_QUIT_LOOP, disk->uid);
+        TRACE!(ATEN_DISK_QUIT { DISK: self });
         self.mut_body().quit = true;
         self.wake_up();
     }
@@ -701,11 +660,9 @@ impl Disk {
                     countdown -= 1;
                 }
                 PoppedTimer::NextTimerExpiry(expiry) => {
-                    //FSTRACE(ATEN_LOOP_NEXT_TIMER, disk->uid, timer->expires);
                     return Some(expiry);
                 }
                 PoppedTimer::InfiniteWait => {
-                    //FSTRACE(ATEN_LOOP_NO_TIMERS, disk->uid);
                     return None;
                 }
             }
@@ -720,7 +677,7 @@ impl Disk {
             (drain)();
             let result = self.take_immediate_action();
             if self.body().quit {
-                //FSTRACE(ATEN_LOOP_PROTECTED_QUIT, disk->uid);
+                TRACE!(ATEN_DISK_LOOP_QUIT { DISK: self });
                 return Ok(());
             }
             let dur_ms =
@@ -729,7 +686,7 @@ impl Disk {
                 } else {
                     -1
                 };
-            //FSTRACE(ATEN_LOOP_PROTECTED_WAIT, disk->uid, ns);
+            TRACE!(ATEN_DISK_LOOP_WAIT { DISK: self, DUR_MS: dur_ms });
             let mut epoll_events = vec![libc::epoll_event {
                 events: 0,
                 u64: 0,
@@ -739,7 +696,7 @@ impl Disk {
             (lock)();
             match result {
                 Err(err) => {
-                    //FSTRACE(ATEN_PROTECTED_LOOP_FAIL, disk->uid);
+                    TRACE!(ATEN_DISK_LOOP_FAIL { DISK: self, ERR: err });
                     return Err(err);
                 }
                 Ok(count) => {
@@ -747,12 +704,13 @@ impl Disk {
                         match self.body().registrations.get(
                             &(epoll_events[i].u64 as RawFd)) {
                             Some(event) => {
-                                //FSTRACE(ATEN_LOOP_PROTECTED_EXECUTE,
-                                //        disk->uid, event->uid);
+                                TRACE!(ATEN_DISK_LOOP_EXECUTE {
+                                    DISK: self, EVENT: event
+                                });
                                 event.trigger();
                             }
                             None => {
-                                //FSTRACE(ATEN_POLL_SPURIOUS_FD, disk->uid);
+                                TRACE!(ATEN_DISK_LOOP_SPURIOUS { DISK: self });
                             }
                         }
                     }
@@ -762,29 +720,30 @@ impl Disk {
     }
 
     pub fn main_loop(&self) -> Result<()> {
-        //FSTRACE(ATEN_LOOP, disk->uid);
+        TRACE!(ATEN_DISK_LOOP { DISK: self });
         assert!(self.mut_body().wakeup_fd.is_none());
         let noop = Rc::new(move || {});
         self.do_loop(noop.clone(), noop.clone(), noop)
     }
 
     fn prepare_protected_loop(&self) -> Result<RawFd> {
-        //FSTRACE(ATEN_PROTECTED_LOOP, disk->uid);
         let mut pipe_fds = vec![0 as libc::c_int; 2];
         let status = unsafe {
             libc::pipe2(pipe_fds.as_mut_ptr(), libc::O_CLOEXEC)
         };
         if status < 0 {
-            //FSTRACE(ATEN_LOOP_PROTECTED_FAIL, disk->uid);
-            return Err(Error::last_os_error());
+            let err = Error::last_os_error();
+            TRACE!(ATEN_DISK_PROTECTED_LOOP_FAIL { DISK: self, ERR: err });
+            return Err(err);
         }
+        TRACE!(ATEN_DISK_PROTECTED_LOOP { DISK: self });
         let write_fd = pipe_fds[1] as RawFd;
         self.mut_body().wakeup_fd = Some(write_fd);
         Ok(pipe_fds[0] as RawFd)
     }
 
     fn finish_protected_loop(&self, read_fd: RawFd) -> Result<()> {
-        //FSTRACE(ATEN_PROTECTED_LOOP_FINISH, disk->uid);
+        TRACE!(ATEN_DISK_PROTECTED_LOOP_FINISH { DISK: self });
         self.unregister(read_fd)?;
         let mut body = self.mut_body();
         let wakup_fd =
@@ -801,7 +760,6 @@ impl Disk {
 
     pub fn protected_loop(&self, lock: Action, unlock: Action) -> Result<()> {
         assert!(self.body().wakeup_fd.is_none());
-        //FSTRACE(ATEN_LOOP_PROTECTED, disk->uid);
         let read_fd = self.prepare_protected_loop()?;
         self.do_loop(
             lock,
@@ -813,8 +771,10 @@ impl Disk {
     fn register_with_flags(&self, fd: RawFd, flags: u32, action: Action)
                            -> Result<()> {
         if let Err(err) = nonblock(fd) {
-            //FSTRACE(ATEN_REGISTER_NONBLOCK_FAIL, disk->uid, fd, action.obj,
-            //        action.act);
+            TRACE!(ATEN_DISK_REGISTER_NONBLOCK_FAIL {
+                DISK: self, FD: fd, FLAGS: r3::hex(flags as u64),
+                ACTION: action_to_string(&action), ERR: err,
+            });
             return Err(err);
         }
         let mut epoll_event = libc::epoll_event {
@@ -825,13 +785,20 @@ impl Disk {
             libc::epoll_ctl(self.fd(), libc::EPOLL_CTL_ADD, fd, &mut epoll_event)
         };
         if status < 0 {
-            //FSTRACE(ATEN_REGISTER_FAIL, disk->uid, fd);
-            return Err(Error::last_os_error());
+            let err = Error::last_os_error();
+            TRACE!(ATEN_DISK_REGISTER_FAIL {
+                DISK: self, FD: fd, FLAGS: r3::hex(flags as u64),
+                ACTION: action_to_string(&action), ERR: err,
+            });
+            return Err(err);
         }
+        TRACE!(ATEN_DISK_REGISTER {
+            DISK: self, FD: fd, FLAGS: r3::hex(flags as u64),
+            ACTION: action_to_string(&action)
+        });
         self.mut_body().registrations.insert(
             fd, self.make_event(action));
         self.wake_up();
-        //FSTRACE(ATEN_REGISTER, disk->uid, fd, action.obj, action.act);
         Ok(())
     }
 
@@ -868,11 +835,17 @@ impl Disk {
             libc::epoll_ctl(self.fd(), libc::EPOLL_CTL_MOD, fd, &mut epoll_event)
         };
         if status < 0 {
-            //FSTRACE(ATEN_MODIFY_OLD_SCHOOL_FAIL, disk->uid, fd);
-            return Err(Error::last_os_error());
+            let err = Error::last_os_error();
+            TRACE!(ATEN_DISK_MODIFY_OLD_SCHOOL_FAIL {
+                DISK: self, FD: fd, READABLE: readable, WRITABLE: writable,
+                ERR: err
+            });
+            return Err(err);
         }
+        TRACE!(ATEN_DISK_MODIFY_OLD_SCHOOL {
+            DISK: self, FD: fd, READABLE: readable, WRITABLE: writable,
+        });
         self.wake_up();
-        //FSTRACE(ATEN_MODIFY_OLD_SCHOOL, disk->uid, fd, readable, writable);
         Ok(())
     }
 
@@ -887,19 +860,20 @@ impl Disk {
                 self.fd(), libc::EPOLL_CTL_DEL, fd, epoll_events.as_mut_ptr())
         };
         if status < 0 {
-            //FSTRACE(ATEN_UNREGISTER_FAIL, disk->uid, fd);
-            return Err(Error::last_os_error());
+            let err = Error::last_os_error();
+            TRACE!(ATEN_DISK_UNREGISTER_FAIL { DISK: self, FD: fd, ERR: err });
+            return Err(err);
         }
-        //FSTRACE(ATEN_UNREGISTER, disk->uid, fd);
+        TRACE!(ATEN_DISK_UNREGISTER { DISK: self, FD: fd });
         Ok(())
     }
 
     pub fn flush(&self, expires: Time) -> Result<()> {
-        //FSTRACE(ATEN_FLUSH, disk->uid, expires);
+        TRACE!(ATEN_DISK_FLUSH { DISK: self, EXPIRES: expires });
         loop {
             let now = self.now();
             if now >= expires {
-                //FSTRACE(ATEN_FLUSH_EXPIRED, disk->uid);
+                TRACE!(ATEN_DISK_FLUSH_EXPIRED { DISK: self });
                 return Err(Error::from_raw_os_error(libc::ETIME));
             }
             match self.poll() {
@@ -911,7 +885,7 @@ impl Disk {
                     }
                 }
                 Err(err) => {
-                    //FSTRACE(ATEN_FLUSH_FAIL, disk->uid);
+                    TRACE!(ATEN_DISK_FLUSH_FAIL { DISK: self, ERR: err });
                     return Err(err);
                 }
             }
@@ -935,6 +909,12 @@ impl Disk {
     pub fn in_f64(&self, x: f64) -> Time { self.now() + Duration::from_f64(x) }
 } // impl Disk
 
+impl std::fmt::Display for Disk {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0.uid)
+    }
+} // impl std::fmt::Display for Disk
+
 #[derive(Debug)]
 pub struct WeakDisk(WeakLink<DiskBody>);
 
@@ -951,8 +931,7 @@ impl WeakDisk {
         match self.upgrade() {
             Some(disk) => { f(&disk); }
             None => {
-                //let _ = format!("{:?}", std::ptr::addr_of!(f));
-                //FSTRACE(ATEN_UPPED_MISS, );
+                TRACE!(ATEN_DISK_UPPED_MISS { DISK: self.0.uid });
             }
         };
     }
@@ -989,6 +968,12 @@ enum EventState {
     Canceled,
 }
 
+impl std::fmt::Display for EventState {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+} // impl std::fmt::Display for EventState
+
 struct EventBody {
     disk_ref: WeakDisk,
     uid: UID,
@@ -1012,13 +997,15 @@ pub struct Event(Link<EventBody>);
 
 impl Event {
     fn set_state(&self, state: EventState) {
-        //FSTRACE(ATEN_EVENT_SET_STATE, event->uid, trace_event_state,
-        //        &event->state, trace_event_state, &state);
-        self.0.body.borrow_mut().state = state;
+        let mut body = self.0.body.borrow_mut();
+        TRACE!(ATEN_EVENT_SET_STATE {
+            EVENT: self, OLD: body.state, NEW: state
+        });
+        body.state = state;
     }
 
     fn perf(&self) {
-        //FSTRACE(ATEN_EVENT_PERF, event->uid);
+        TRACE!(ATEN_EVENT_PERF { EVENT: self });
         match self.0.body.borrow().state {
             EventState::Idle => { unreachable!(); }
             EventState::Triggered => {
@@ -1036,7 +1023,7 @@ impl Event {
     }
 
     pub fn trigger(&self) {
-        //FSTRACE(ATEN_EVENT_TRIGGER, event->uid);
+        TRACE!(ATEN_EVENT_TRIGGER { EVENT: self });
         match self.0.body.borrow().state {
             EventState::Idle => {
                 self.set_state(EventState::Triggered);
@@ -1063,7 +1050,7 @@ impl Event {
     }
 
     pub fn cancel(&self) {
-        //FSTRACE(ATEN_EVENT_CANCEL, event->uid);
+        TRACE!(ATEN_EVENT_CANCEL { EVENT: self });
         match self.0.body.borrow().state {
             EventState::Idle | EventState::Canceled => {}
             EventState::Triggered => {
@@ -1079,6 +1066,12 @@ impl Event {
         })
     }
 } // impl Event
+
+impl std::fmt::Display for Event {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0.uid)
+    }
+} // impl std::fmt::Display for Event
 
 #[derive(Debug)]
 pub struct WeakEvent(WeakLink<EventBody>);
@@ -1097,8 +1090,7 @@ impl WeakEvent {
         match self.upgrade() {
             Some(event) => { f(&event); }
             None => {
-                //let _ = format!("{:?}", std::ptr::addr_of!(f));
-                //FSTRACE(ATEN_EVENT_UPPED_MISS, );
+                TRACE!(ATEN_EVENT_UPPED_MISS { EVENT: self.0.uid });
             }
         };
     }
