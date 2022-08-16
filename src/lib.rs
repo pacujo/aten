@@ -363,11 +363,7 @@ impl Clone for Timer {
     }
 } // impl Clone for Timer
 
-impl std::fmt::Display for Timer {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.0.uid)
-    }
-} // impl std::fmt::Display for Timer
+DISPLAY_LINK_UID!(Timer);
 
 type WeakTimer = Timer;
 
@@ -952,11 +948,7 @@ impl Disk {
     pub fn in_f64(&self, x: f64) -> Time { self.now() + Duration::from_f64(x) }
 } // impl Disk
 
-impl std::fmt::Display for Disk {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.0.uid)
-    }
-} // impl std::fmt::Display for Disk
+DISPLAY_LINK_UID!(Disk);
 
 #[derive(Debug)]
 pub struct WeakDisk(WeakLink<DiskBody>);
@@ -1111,11 +1103,7 @@ impl Event {
     }
 } // impl Event
 
-impl std::fmt::Display for Event {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.0.uid)
-    }
-} // impl std::fmt::Display for Event
+DISPLAY_LINK_UID!(Event);
 
 #[derive(Debug)]
 pub struct WeakEvent(WeakLink<EventBody>);
@@ -1190,5 +1178,16 @@ pub fn is_again(err: &Error) -> bool {
         errno == libc::EAGAIN
     } else {
         false
+    }
+}
+
+#[macro_export]
+macro_rules! DISPLAY_LINK_UID {
+    ($typename:ident) => {
+        impl std::fmt::Display for $typename {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(f, "{}", self.0.uid)
+            }
+        } // impl std::fmt::Display for DryStreamBody
     }
 }

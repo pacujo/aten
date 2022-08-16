@@ -8,17 +8,15 @@ use crate::stream::DebuggableByteStreamBody;
 use r3::TRACE;
 
 #[derive(Debug)]
-struct ZeroStreamBody(BaseStreamBody);
+struct ZeroStreamBody {
+    base: BaseStreamBody,
+}
 
-impl std::fmt::Display for ZeroStreamBody {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-} // impl std::fmt::Display for ZeroStreamBody
+crate::DISPLAY_BODY_UID!(ZeroStreamBody);
 
 impl ByteStreamBody for ZeroStreamBody {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        if let Ok(n) = self.0.read(buf) {
+        if let Ok(n) = self.base.read(buf) {
             TRACE!(ATEN_ZEROSTREAM_READ_TRIVIAL {
                 STREAM: self, WANT: buf.len()
             });
@@ -35,14 +33,14 @@ impl ByteStreamBody for ZeroStreamBody {
 
     fn close(&mut self) {
         TRACE!(ATEN_ZEROSTREAM_CLOSE { STREAM: self });
-        self.0.close();
+        self.base.close();
     }
 
     fn register(&mut self, callback: Option<Action>) {
         TRACE!(ATEN_ZEROSTREAM_REGISTER {
             STREAM: self, CALLBACK: callback_to_string(&callback)
         });
-        self.0.register(callback);
+        self.base.register(callback);
     }
 } // impl ByteStreamBody for ZeroStreamBody 
 
@@ -55,8 +53,9 @@ impl ZeroStream {
     pub fn new(disk: &Disk) -> ZeroStream {
         let uid = UID::new();
         TRACE!(ATEN_ZEROSTREAM_CREATE { DISK: disk, STREAM: uid });
-        let body = ZeroStreamBody(BaseStreamBody::new(
-            disk.downgrade(), uid));
+        let body = ZeroStreamBody {
+            base: BaseStreamBody::new(disk.downgrade(), uid)
+        };
         ZeroStream(Link {
             uid: uid,
             body: Rc::new(RefCell::new(body)),

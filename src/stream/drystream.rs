@@ -8,17 +8,15 @@ use crate::stream::DebuggableByteStreamBody;
 use r3::TRACE;
 
 #[derive(Debug)]
-struct DryStreamBody(BaseStreamBody);
+struct DryStreamBody {
+    base: BaseStreamBody,
+}
 
-impl std::fmt::Display for DryStreamBody {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-} // impl std::fmt::Display for DryStreamBody
+crate::DISPLAY_BODY_UID!(DryStreamBody);
 
 impl ByteStreamBody for DryStreamBody {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        if let Ok(n) = self.0.read(buf) {
+        if let Ok(n) = self.base.read(buf) {
             TRACE!(ATEN_DRYSTREAM_READ_TRIVIAL {
                 STREAM: self, WANT: buf.len()
             });
@@ -32,14 +30,14 @@ impl ByteStreamBody for DryStreamBody {
 
     fn close(&mut self) {
         TRACE!(ATEN_DRYSTREAM_CLOSE { STREAM: self });
-        self.0.close();
+        self.base.close();
     }
 
     fn register(&mut self, callback: Option<Action>) {
         TRACE!(ATEN_DRYSTREAM_REGISTER {
             STREAM: self, CALLBACK: callback_to_string(&callback)
         });
-        self.0.register(callback);
+        self.base.register(callback);
     }
 } // impl ByteStreamBody for DryStreamBody
 
@@ -52,8 +50,9 @@ impl DryStream {
     pub fn new(disk: &Disk) -> DryStream {
         let uid = UID::new();
         TRACE!(ATEN_DRYSTREAM_CREATE { DISK: disk, STREAM: uid });
-        let body = DryStreamBody(BaseStreamBody::new(
-            disk.downgrade(), uid));
+        let body = DryStreamBody {
+            base: BaseStreamBody::new(disk.downgrade(), uid)
+        };
         DryStream(Link {
             uid: uid,
             body: Rc::new(RefCell::new(body)),

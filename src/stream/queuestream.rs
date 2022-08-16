@@ -18,11 +18,7 @@ pub struct QueueStreamBody {
     notification_expected: bool,
 }
 
-impl std::fmt::Display for QueueStreamBody {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.base)
-    }
-} // impl std::fmt::Display for QueueStreamBody
+crate::DISPLAY_BODY_UID!(QueueStreamBody);
 
 impl ByteStreamBody for QueueStreamBody {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
@@ -108,11 +104,7 @@ impl DebuggableByteStreamBody for QueueStreamBody {}
 #[derive(Debug)]
 pub struct QueueStream(Link<QueueStreamBody>);
 
-impl std::fmt::Display for QueueStream {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.0.uid)
-    }
-} // impl std::fmt::Display for QueueStream
+crate::DISPLAY_LINK_UID!(QueueStream);
 
 impl QueueStream {
     pub fn new(disk: &Disk) -> QueueStream {
@@ -231,8 +223,4 @@ impl WeakQueueStream {
     }
 } // impl WeakQueueStream
 
-impl std::fmt::Display for WeakQueueStream {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.0.uid)
-    }
-} // std::fmt::Display for WeakQueueStream
+crate::DISPLAY_LINK_UID!(WeakQueueStream);

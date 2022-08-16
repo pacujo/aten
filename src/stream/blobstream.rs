@@ -14,11 +14,7 @@ struct BlobStreamBody {
     cursor: usize,
 }
 
-impl std::fmt::Display for BlobStreamBody {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.base)
-    }
-} // impl std::fmt::Display for BlobStreamBody
+crate::DISPLAY_BODY_UID!(BlobStreamBody);
 
 impl ByteStreamBody for BlobStreamBody {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {

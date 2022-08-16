@@ -37,11 +37,7 @@ impl ByteStream {
     }
 } // impl ByteStream
 
-impl std::fmt::Display for ByteStream {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.0.uid)
-    }
-} // impl std::fmt::Display for ByteStream
+crate::DISPLAY_LINK_UID!(ByteStream);
 
 impl std::clone::Clone for ByteStream {
     fn clone(&self) -> Self {
@@ -59,11 +55,7 @@ impl std::fmt::Debug for ByteStream {
 
 pub struct WeakByteStream(WeakLink<dyn ByteStreamBody>);
 
-impl std::fmt::Display for WeakByteStream {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.0.uid)
-    }
-} // impl std::fmt::Display for WeakByteStream
+crate::DISPLAY_LINK_UID!(WeakByteStream);
 
 impl WeakByteStream {
     pub fn upgrade(&self) -> Option<ByteStream> {
@@ -101,6 +93,17 @@ pub fn close_relaxed(weak_disk: &WeakDisk, stream: &ByteStream) {
             });
         }));
     });
+}
+
+#[macro_export]
+macro_rules! DISPLAY_BODY_UID {
+    ($typename:ident) => {
+        impl std::fmt::Display for $typename {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(f, "{}", self.base)
+            }
+        } // impl std::fmt::Display for DryStreamBody
+    }
 }
 
 pub mod basestream;
