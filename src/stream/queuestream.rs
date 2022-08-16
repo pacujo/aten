@@ -3,10 +3,10 @@ use std::cell::RefCell;
 use std::collections::LinkedList;
 use std::io::{Result, Error};
 
-use crate::{Action, Disk, Link, UID, WeakLink};
+use crate::{Action, Disk, Link, UID, WeakLink, callback_to_string};
 use crate::{again, is_again};
 use crate::stream::{ByteStream, BaseStreamBody, ByteStreamBody};
-use crate::stream::{DebuggableByteStreamBody, close_relaxed, callback_to_string};
+use crate::stream::{DebuggableByteStreamBody, close_relaxed};
 use r3::TRACE;
 
 pub struct QueueStreamBody {

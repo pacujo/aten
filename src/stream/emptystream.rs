@@ -2,9 +2,9 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::io::Result;
 
-use crate::{Action, Disk, Link, UID};
+use crate::{Action, Disk, Link, UID, callback_to_string};
 use crate::stream::{ByteStream, BaseStreamBody, ByteStreamBody};
-use crate::stream::{DebuggableByteStreamBody, callback_to_string};
+use crate::stream::DebuggableByteStreamBody;
 use r3::TRACE;
 
 #[derive(Debug)]

@@ -5,25 +5,7 @@ use std::io::Result;
 use std::rc::Rc;
 
 use crate::{Action, Link, UID, WeakDisk, WeakLink};
-use crate::{format_action, action_to_string};
 use r3::TRACE;
-
-pub fn format_callback(f: &mut std::fmt::Formatter, callback: &Option<Action>)
-                       -> std::fmt::Result {
-    if let Some(action) = callback {
-        format_action(f, &action)
-    } else {
-        Ok(())
-    }
-}
-
-pub fn callback_to_string(callback: &Option<Action>) -> String {
-    if let Some(action) = callback {
-        action_to_string(action)
-    } else {
-        "".to_string()
-    }
-}
 
 pub struct ByteStream(Link<dyn ByteStreamBody>);
 

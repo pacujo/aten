@@ -11,7 +11,7 @@ use std::io::{Error, Result};
 use std::option::Option;
 use std::os::unix::io::RawFd;
 use std::rc::{Rc, Weak};
-use r3::{TRACE, errsym};
+use r3::{TRACE, TRACE_ENABLED, errsym};
 
 pub type UID = r3::UID;
 pub type Action = Rc<dyn Fn()>;
@@ -23,6 +23,23 @@ pub fn format_action(f: &mut std::fmt::Formatter, action: &Action)
 
 pub fn action_to_string(action: &Action) -> String {
     format!("{:?}", Rc::as_ptr(action))
+}
+
+pub fn format_callback(f: &mut std::fmt::Formatter, callback: &Option<Action>)
+                       -> std::fmt::Result {
+    if let Some(action) = callback {
+        format_action(f, &action)
+    } else {
+        Ok(())
+    }
+}
+
+pub fn callback_to_string(callback: &Option<Action>) -> String {
+    if let Some(action) = callback {
+        action_to_string(action)
+    } else {
+        "".to_string()
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -286,7 +303,7 @@ struct TimerBody {
     uid: UID,
     kind: TimerKind,
     action: Option<Action>,
-    stack_trace: Option<Vec<usize>>,
+    stack_trace: Option<String>,
 }
 
 impl std::fmt::Debug for TimerBody {
@@ -295,6 +312,7 @@ impl std::fmt::Debug for TimerBody {
             .field("expires", &self.expires)
             .field("uid", &self.uid)
             .field("kind", &self.kind)
+            .field("action", &callback_to_string(&self.action))
             .field("stack_trace", &self.stack_trace)
             .finish()
     }
@@ -433,13 +451,19 @@ impl Disk {
     fn new_timer(&self, uid: UID, kind: TimerKind, expires: Time, action: Action)
                  -> (Timer, Rc<RefCell<TimerBody>>) {
         self.wake_up();
+        let stack_trace =
+            if TRACE_ENABLED!(ATEN_DISK_TIMER_BT) {
+                Some(r3::stack())
+            } else {
+                None
+            };
         let timer_ref = Rc::new(RefCell::new(TimerBody {
             disk_ref: self.downgrade(),
             expires: expires,
             uid: uid,
             kind: kind,
             action: Some(action),
-            stack_trace: None,  // TODO
+            stack_trace: stack_trace,
         }));
         let uid = timer_ref.borrow().uid;
         let timer = Timer(WeakLink {
@@ -479,12 +503,18 @@ impl Disk {
         TRACE!(ATEN_DISK_EVENT_CREATE {
             DISK: self, EVENT: event_uid, ACTION: action_to_string(&action),
         });
+        let stack_trace =
+            if TRACE_ENABLED!(ATEN_DISK_TIMER_BT) {
+                Some(r3::stack())
+            } else {
+                None
+            };
         let event_body = EventBody {
             disk_ref: self.downgrade(),
             uid: event_uid,
             state: EventState::Idle,
             action: Some(action),
-            stack_trace: None,  // TODO
+            stack_trace: stack_trace,
         };
         Event(Link {
             uid: event_uid,
@@ -542,9 +572,14 @@ impl Disk {
                                 DISK: self, TIMER: timer_body.uid,
                                 ACTION: action_to_string(&action),
                             });
-                            //if (TRACE_ENABLED!(ATEN_TIMER_BT) &&
-                            //    timer->stack_trace)
-                            //    emit_timer_backtrace(timer);
+                            if TRACE_ENABLED!(ATEN_DISK_TIMER_BT) {
+                                if let Some(stack) = &timer_body.stack_trace {
+                                    TRACE!(ATEN_DISK_TIMER_BT {
+                                        DISK: self, TIMER: timer_body.uid,
+                                        BT: stack,
+                                    })
+                                }
+                            }
                             return PoppedTimer::TimerExpired(action);
                         }
                     }
@@ -987,7 +1022,7 @@ struct EventBody {
     uid: UID,
     state: EventState,
     action: Option<Action>,
-    stack_trace: Option<Vec<usize>>,
+    stack_trace: Option<String>,
 }
 
 impl std::fmt::Debug for EventBody {
@@ -995,6 +1030,7 @@ impl std::fmt::Debug for EventBody {
         f.debug_struct("EventBody")
             .field("uid", &self.uid)
             .field("state", &self.state)
+            .field("action", &callback_to_string(&self.action))
             .field("stack_trace", &self.stack_trace)
             .finish()
     }
