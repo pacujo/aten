@@ -6,7 +6,8 @@ use crate::{Action, Disk, Link, UID, callback_to_string};
 use crate::stream::{BaseStreamBody, ByteStreamBody};
 use r3::TRACE;
 
-DECLARE_STREAM!(EmptyStream, WeakEmptyStream, EmptyStreamBody);
+DECLARE_STREAM!(EmptyStream, WeakEmptyStream, EmptyStreamBody,
+                ATEN_EMPTYSTREAM_DROP);
 
 #[derive(Debug)]
 struct EmptyStreamBody {
@@ -19,11 +20,6 @@ impl ByteStreamBody for EmptyStreamBody {
             STREAM: self, WANT: buf.len(), GOT: 0
         });
         Ok(0)
-    }
-
-    fn close(&mut self) {
-        TRACE!(ATEN_EMPTYSTREAM_CLOSE { STREAM: self });
-        self.base.close();
     }
 
     fn register(&mut self, callback: Option<Action>) {

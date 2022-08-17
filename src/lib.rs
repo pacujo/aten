@@ -381,6 +381,7 @@ struct DiskBody {
 
 impl Drop for DiskBody {
     fn drop(&mut self) {
+        TRACE!(ATEN_DISK_DROP { DISK: self.uid });
         unsafe { libc::close(self.poll_fd) };
         if let Some(fd) = self.wakeup_fd {
             unsafe { libc::close(fd) };
@@ -1027,6 +1028,12 @@ impl std::fmt::Debug for EventBody {
             .finish()
     }
 }
+
+impl Drop for EventBody {
+    fn drop(&mut self) {
+        TRACE!(ATEN_DISK_EVENT_DROP { EVENT: self.uid });
+    }
+} // impl Drop for EventBody
 
 #[derive(Debug)]
 pub struct Event(Link<EventBody>);

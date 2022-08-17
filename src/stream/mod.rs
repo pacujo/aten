@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::io::Result;
 use std::rc::Rc;
 
-use crate::{Action, Link, UID, WeakDisk, WeakLink};
+use crate::{Action, Link, UID, WeakLink};
 use r3::TRACE;
 
 pub struct ByteStream(Link<dyn ByteStreamBody>);
@@ -26,10 +26,6 @@ impl ByteStream {
 
     pub fn read(&self, buf: &mut [u8]) -> Result<usize> {
         self.0.body.borrow_mut().read(buf)
-    }
-
-    pub fn close(&self) {
-        self.0.body.borrow_mut().close();
     }
 
     pub fn register(&self, callback: Option<Action>) {
@@ -78,29 +74,23 @@ impl WeakByteStream {
 
 pub trait ByteStreamBody {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize>;
-    fn close(&mut self);
     fn register(&mut self, callback: Option<super::Action>);
 }
 
 pub trait DebuggableByteStreamBody: ByteStreamBody + std::fmt::Debug {}
 
-pub fn close_relaxed(weak_disk: &WeakDisk, stream: &ByteStream) {
-    weak_disk.upped(|disk| {
-        let weak_stream = stream.downgrade();
-        disk.execute(Rc::new(move || {
-            weak_stream.upped(|stream| {
-                stream.close();
-            });
-        }));
-    });
-}
-
 #[macro_export]
 macro_rules! DECLARE_STREAM {
-    ($stream:ident, $weak:ident, $body:ident) => {
+    ($stream:ident, $weak:ident, $body:ident, $drop:ident) => {
         impl std::fmt::Display for $body {
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 write!(f, "{}", self.base)
+            }
+        }
+
+        impl Drop for $body {
+            fn drop(&mut self) {
+                TRACE!($drop { STREAM: self });
             }
         }
 
@@ -162,10 +152,6 @@ macro_rules! IMPL_STREAM {
 
         pub fn read(&self, buf: &mut [u8]) -> std::io::Result<usize> {
             self.0.body.borrow_mut().read(buf)
-        }
-
-        pub fn close(&self) {
-            self.0.body.borrow_mut().close()
         }
 
         pub fn register(&self, callback: Option<Action>) {

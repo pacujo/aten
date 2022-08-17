@@ -6,7 +6,8 @@ use crate::{Action, Disk, Link, UID, callback_to_string};
 use crate::stream::{BaseStreamBody, ByteStreamBody};
 use r3::TRACE;
 
-DECLARE_STREAM!(BlobStream, WeakBlobStream, BlobStreamBody);
+DECLARE_STREAM!(BlobStream, WeakBlobStream, BlobStreamBody,
+                ATEN_BLOBSTREAM_DROP);
 
 #[derive(Debug)]
 struct BlobStreamBody {
@@ -35,11 +36,6 @@ impl ByteStreamBody for BlobStreamBody {
             STREAM: self, DATA: r3::octets(&buf[..count])
         });
         Ok(count)
-    }
-
-    fn close(&mut self) {
-        TRACE!(ATEN_BLOBSTREAM_CLOSE { STREAM: self });
-        self.base.close();
     }
 
     fn register(&mut self, callback: Option<Action>) {

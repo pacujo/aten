@@ -5,10 +5,11 @@ use std::io::{Result, Error};
 
 use crate::{Action, Disk, Link, UID, callback_to_string};
 use crate::{again, is_again};
-use crate::stream::{ByteStream, BaseStreamBody, ByteStreamBody, close_relaxed};
+use crate::stream::{ByteStream, BaseStreamBody, ByteStreamBody};
 use r3::TRACE;
 
-DECLARE_STREAM!(QueueStream, WeakQueueStream, QueueStreamBody);
+DECLARE_STREAM!(QueueStream, WeakQueueStream, QueueStreamBody,
+                ATEN_QUEUESTREAM_DROP);
 
 pub struct QueueStreamBody {
     base: BaseStreamBody,
@@ -49,7 +50,6 @@ impl ByteStreamBody for QueueStreamBody {
                     break;
                 }
                 Ok(0) => {
-                    head.close();
                     self.queue.pop_front();
                 }
                 Ok(count) => {
@@ -70,11 +70,6 @@ impl ByteStreamBody for QueueStreamBody {
         } else {
             Err(again())
         }
-    }
-
-    fn close(&mut self) {
-        TRACE!(ATEN_QUEUESTREAM_CLOSE { STREAM: self });
-        self.base.close();
     }
 
     fn register(&mut self, callback: Option<Action>) {
@@ -147,13 +142,6 @@ impl QueueStream {
 
     pub fn enqueue(&self, other: &ByteStream) {
         assert!(!self.0.body.borrow().terminated);
-        if self.0.body.borrow().base.is_closed() {
-            TRACE!(ATEN_QUEUESTREAM_ENQUEUE_POSTHUMOUSLY {
-                STREAM: self, OTHER: other
-            });
-            close_relaxed(self.0.body.borrow().base.get_weak_disk(), other);
-            return;
-        }
         TRACE!(ATEN_QUEUESTREAM_ENQUEUE { STREAM: self, OTHER: other });
         self.0.body.borrow_mut().queue.push_back(other.clone());
         other.register(Some(self.make_notifier()));

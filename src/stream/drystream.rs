@@ -6,7 +6,7 @@ use crate::{Action, Disk, Link, UID, callback_to_string};
 use crate::stream::{BaseStreamBody, ByteStreamBody};
 use r3::TRACE;
 
-DECLARE_STREAM!(DryStream, WeakDryStream, DryStreamBody);
+DECLARE_STREAM!(DryStream, WeakDryStream, DryStreamBody, ATEN_DRYSTREAM_DROP);
 
 #[derive(Debug)]
 struct DryStreamBody {
@@ -25,11 +25,6 @@ impl ByteStreamBody for DryStreamBody {
             STREAM: self, WANT: buf.len(), ERR: "EAGAIN"
         });
         Err(Error::from_raw_os_error(libc::EAGAIN))
-    }
-
-    fn close(&mut self) {
-        TRACE!(ATEN_DRYSTREAM_CLOSE { STREAM: self });
-        self.base.close();
     }
 
     fn register(&mut self, callback: Option<Action>) {
