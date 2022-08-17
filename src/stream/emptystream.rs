@@ -3,16 +3,15 @@ use std::cell::RefCell;
 use std::io::Result;
 
 use crate::{Action, Disk, Link, UID, callback_to_string};
-use crate::stream::{ByteStream, BaseStreamBody, ByteStreamBody};
-use crate::stream::DebuggableByteStreamBody;
+use crate::stream::{BaseStreamBody, ByteStreamBody};
 use r3::TRACE;
+
+DECLARE_STREAM!(EmptyStream, WeakEmptyStream, EmptyStreamBody);
 
 #[derive(Debug)]
 struct EmptyStreamBody {
     base: BaseStreamBody,
 }
-
-crate::DISPLAY_BODY_UID!(EmptyStreamBody);
 
 impl ByteStreamBody for EmptyStreamBody {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
@@ -35,12 +34,9 @@ impl ByteStreamBody for EmptyStreamBody {
     }
 } // impl ByteStreamBody for EmptyStreamBody
 
-impl DebuggableByteStreamBody for EmptyStreamBody {}
-
-#[derive(Debug)]
-pub struct EmptyStream(Link<EmptyStreamBody>);
-
 impl EmptyStream {
+    IMPL_STREAM!(WeakEmptyStream);
+
     pub fn new(disk: &Disk) -> EmptyStream {
         let uid = UID::new();
         TRACE!(ATEN_EMPTYSTREAM_CREATE { DISK: disk, STREAM: uid });
@@ -52,26 +48,4 @@ impl EmptyStream {
             body: Rc::new(RefCell::new(body)),
         })
     }
-
-    pub fn as_byte_stream(&self) -> ByteStream {
-        ByteStream::new(self.0.uid, self.0.body.clone())
-    }
-
-    pub fn read(&self, buf: &mut [u8]) -> Result<usize> {
-        self.0.body.borrow_mut().read(buf)
-    }
-
-    pub fn close(&self) {
-        self.0.body.borrow_mut().close();
-    }
-
-    fn register(&self, callback: Option<Action>) {
-        self.0.body.borrow_mut().register(callback);
-    }
 } // impl EmptyStream
-
-impl From<EmptyStream> for ByteStream {
-    fn from(stream: EmptyStream) -> ByteStream {
-        stream.as_byte_stream()
-    }
-} // impl From<EmptyStream> for ByteStream 

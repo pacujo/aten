@@ -96,13 +96,81 @@ pub fn close_relaxed(weak_disk: &WeakDisk, stream: &ByteStream) {
 }
 
 #[macro_export]
-macro_rules! DISPLAY_BODY_UID {
-    ($typename:ident) => {
-        impl std::fmt::Display for $typename {
+macro_rules! DECLARE_STREAM {
+    ($stream:ident, $weak:ident, $body:ident) => {
+        impl std::fmt::Display for $body {
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 write!(f, "{}", self.base)
             }
-        } // impl std::fmt::Display for DryStreamBody
+        }
+
+        impl crate::stream::DebuggableByteStreamBody for $body {}
+
+        #[derive(Debug)]
+        pub struct $stream(crate::Link<$body>);
+
+        impl From<$stream> for crate::stream::ByteStream {
+            fn from(stream: $stream) -> crate::stream::ByteStream {
+                stream.as_byte_stream()
+            }
+        }
+
+        #[derive(Debug)]
+        pub struct $weak(crate::WeakLink<$body>);
+
+        impl $weak {
+            pub fn upgrade(&self) -> Option<$stream> {
+                self.0.body.upgrade().map(|body|
+                                          $stream(Link {
+                                              uid: self.0.uid,
+                                              body: body,
+                                          }))
+            }
+
+            pub fn upped<F>(&self, f: F) where F: Fn(&$stream) {
+                match self.upgrade() {
+                    Some(stream) => { f(&stream); }
+                    None => {
+                        TRACE!(ATEN_QUEUESTREAM_UPPED_MISS { STREAM: self });
+                    }
+                };
+            }
+        }
+
+        crate::DISPLAY_LINK_UID!($stream);
+        crate::DISPLAY_LINK_UID!($weak);
+    }
+}
+
+#[macro_export]
+macro_rules! IMPL_STREAM {
+    ($weak:ident) => {
+        fn get_callback(&self) -> Option<Action> {
+            self.0.body.borrow().base.get_callback()
+        }
+
+        pub fn as_byte_stream(&self) -> crate::stream::ByteStream {
+            crate::stream::ByteStream::new(self.0.uid, self.0.body.clone())
+        }
+
+        pub fn downgrade(&self) -> $weak {
+            $weak(crate::WeakLink {
+                uid: self.0.uid,
+                body: std::rc::Rc::downgrade(&self.0.body),
+            })
+        }
+
+        pub fn read(&self, buf: &mut [u8]) -> std::io::Result<usize> {
+            self.0.body.borrow_mut().read(buf)
+        }
+
+        pub fn close(&self) {
+            self.0.body.borrow_mut().close()
+        }
+
+        pub fn register(&self, callback: Option<Action>) {
+            self.0.body.borrow_mut().register(callback)
+        }
     }
 }
 

@@ -3,11 +3,12 @@ use std::cell::RefCell;
 use std::collections::LinkedList;
 use std::io::{Result, Error};
 
-use crate::{Action, Disk, Link, UID, WeakLink, callback_to_string};
+use crate::{Action, Disk, Link, UID, callback_to_string};
 use crate::{again, is_again};
-use crate::stream::{ByteStream, BaseStreamBody, ByteStreamBody};
-use crate::stream::{DebuggableByteStreamBody, close_relaxed};
+use crate::stream::{ByteStream, BaseStreamBody, ByteStreamBody, close_relaxed};
 use r3::TRACE;
+
+DECLARE_STREAM!(QueueStream, WeakQueueStream, QueueStreamBody);
 
 pub struct QueueStreamBody {
     base: BaseStreamBody,
@@ -17,8 +18,6 @@ pub struct QueueStreamBody {
     notification: Option<Action>,
     notification_expected: bool,
 }
-
-crate::DISPLAY_BODY_UID!(QueueStreamBody);
 
 impl ByteStreamBody for QueueStreamBody {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
@@ -99,14 +98,9 @@ impl std::fmt::Debug for QueueStreamBody {
     }
 } // impl Debug for QueueStreamBody 
 
-impl DebuggableByteStreamBody for QueueStreamBody {}
-
-#[derive(Debug)]
-pub struct QueueStream(Link<QueueStreamBody>);
-
-crate::DISPLAY_LINK_UID!(QueueStream);
-
 impl QueueStream {
+    IMPL_STREAM!(WeakQueueStream);
+
     pub fn new(disk: &Disk) -> QueueStream {
         let uid = UID::new();
         TRACE!(ATEN_QUEUESTREAM_CREATE { DISK: disk, STREAM: uid });
@@ -134,33 +128,6 @@ impl QueueStream {
         });
         body.borrow_mut().notification = Some(action);
         stream
-    }
-
-    fn get_callback(&self) -> Option<Action> {
-        self.0.body.borrow().base.get_callback()
-    }
-
-    pub fn as_byte_stream(&self) -> ByteStream {
-        ByteStream::new(self.0.uid, self.0.body.clone())
-    }
-
-    pub fn downgrade(&self) -> WeakQueueStream {
-        WeakQueueStream(WeakLink {
-            uid: self.0.uid,
-            body: Rc::downgrade(&self.0.body),
-        })
-    }
-
-    pub fn read(&self, buf: &mut [u8]) -> Result<usize> {
-        self.0.body.borrow_mut().read(buf)
-    }
-
-    pub fn close(&self) {
-        self.0.body.borrow_mut().close()
-    }
-
-    pub fn register(&self, callback: Option<Action>) {
-        self.0.body.borrow_mut().register(callback)
     }
 
     fn make_notifier(&self) -> Action {
@@ -195,32 +162,3 @@ impl QueueStream {
         );        
     }
 } // impl QueueStream
-
-impl From<QueueStream> for ByteStream {
-    fn from(stream: QueueStream) -> ByteStream {
-        stream.as_byte_stream()
-    }
-} // impl From<QueueStream> for ByteStream 
-
-pub struct WeakQueueStream(WeakLink<QueueStreamBody>);
-
-impl WeakQueueStream {
-    pub fn upgrade(&self) -> Option<QueueStream> {
-        self.0.body.upgrade().map(|body|
-            QueueStream(Link {
-                uid: self.0.uid,
-                body: body,
-            }))
-    }
-
-    pub fn upped<F>(&self, f: F) where F: Fn(&QueueStream) {
-        match self.upgrade() {
-            Some(stream) => { f(&stream); }
-            None => {
-                TRACE!(ATEN_QUEUESTREAM_UPPED_MISS { STREAM: self });
-            }
-        };
-    }
-} // impl WeakQueueStream
-
-crate::DISPLAY_LINK_UID!(WeakQueueStream);
