@@ -19,16 +19,8 @@ pub struct StreamBody {
     notification_expected: bool,
 }
 
-impl ByteStreamBody for StreamBody {
-    IMPL_STREAM_BODY!(ATEN_QUEUESTREAM_REGISTER);
-
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        if let Ok(n) = self.base.read(buf) {
-            TRACE!(ATEN_QUEUESTREAM_READ_TRIVIAL {
-                STREAM: self, WANT: buf.len()
-            });
-            return Ok(n);
-        }
+impl StreamBody {
+    fn read_nontrivial(&mut self, buf: &mut [u8]) -> Result<usize> {
         if let Some(err) = self.pending_error.take() {
             return Err(err);
         }
@@ -58,18 +50,42 @@ impl ByteStreamBody for StreamBody {
                 }
             }
         }
-        TRACE!(ATEN_QUEUESTREAM_READ {
-            STREAM: self, WANT: buf.len(), GOT: cursor
-        });
         if cursor > 0 {
-            TRACE!(ATEN_QUEUESTREAM_READ_DUMP {
-                STREAM: self, DATA: r3::octets(&buf[..cursor])
-            });
             Ok(cursor)
         } else if self.terminated {
             Ok(0)
         } else {
             Err(again())
+        }
+    }
+}
+
+impl ByteStreamBody for StreamBody {
+    IMPL_STREAM_BODY!(ATEN_QUEUESTREAM_REGISTER);
+
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+        if let Ok(n) = self.base.read(buf) {
+            TRACE!(ATEN_QUEUESTREAM_READ_TRIVIAL {
+                STREAM: self, WANT: buf.len()
+            });
+            return Ok(n);
+        }
+        match self.read_nontrivial(buf) {
+            Ok(count) => {
+                TRACE!(ATEN_QUEUESTREAM_READ {
+                    STREAM: self, WANT: buf.len(), GOT: count
+                });
+                TRACE!(ATEN_QUEUESTREAM_READ_DUMP {
+                    STREAM: self, DATA: r3::octets(&buf[..count])
+                });
+                Ok(count)
+            }
+            Err(err) => {
+                TRACE!(ATEN_QUEUESTREAM_READ_FAIL {
+                    STREAM: self, WANT: buf.len(), ERR: r3::errsym(&err)
+                });
+                Err(err)
+            }
         }
     }
 } // impl ByteStreamBody for StreamBody 

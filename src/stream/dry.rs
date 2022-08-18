@@ -13,6 +13,12 @@ struct StreamBody {
     base: base::StreamBody,
 }
 
+impl StreamBody {
+    fn read_nontrivial(&mut self, _buf: &mut [u8]) -> Result<usize> {
+        Err(Error::from_raw_os_error(libc::EAGAIN))
+    }
+}
+
 impl ByteStreamBody for StreamBody {
     IMPL_STREAM_BODY!(ATEN_DRYSTREAM_REGISTER);
 
@@ -23,10 +29,23 @@ impl ByteStreamBody for StreamBody {
             });
             return Ok(n);
         }
-        TRACE!(ATEN_DRYSTREAM_READ_FAIL {
-            STREAM: self, WANT: buf.len(), ERR: "EAGAIN"
-        });
-        Err(Error::from_raw_os_error(libc::EAGAIN))
+        match self.read_nontrivial(buf) {
+            Ok(count) => {
+                TRACE!(ATEN_DRYSTREAM_READ {
+                    STREAM: self, WANT: buf.len(), GOT: count
+                });
+                TRACE!(ATEN_DRYSTREAM_READ_DUMP {
+                    STREAM: self, DATA: r3::octets(&buf[..count])
+                });
+                Ok(count)
+            }
+            Err(err) => {
+                TRACE!(ATEN_DRYSTREAM_READ_FAIL {
+                    STREAM: self, WANT: buf.len(), ERR: r3::errsym(&err)
+                });
+                Err(err)
+            }
+        }
     }
 } // impl ByteStreamBody for StreamBody
 

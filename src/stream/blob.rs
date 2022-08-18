@@ -15,28 +15,44 @@ struct StreamBody {
     cursor: usize,
 }
 
-impl ByteStreamBody for StreamBody {
-    IMPL_STREAM_BODY!(ATEN_BLOBSTREAM_REGISTER);
-
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        if let Ok(n) = self.base.read(buf) {
-            TRACE!(ATEN_BLOBSTREAM_READ_TRIVIAL {
-                STREAM: self, WANT: buf.len()
-            });
-            return Ok(n);
-        }
+impl StreamBody {
+    fn read_nontrivial(&mut self, buf: &mut [u8]) -> Result<usize> {
         let count = buf.len().min(self.blob.len() - self.cursor);
         for slot in &mut buf[..count].iter_mut() {
             *slot = self.blob[self.cursor];
             self.cursor += 1;
         }
-        TRACE!(ATEN_BLOBSTREAM_READ {
-            STREAM: self, WANT: buf.len(), GOT: count
-        });
-        TRACE!(ATEN_BLOBSTREAM_READ_DUMP {
-            STREAM: self, DATA: r3::octets(&buf[..count])
-        });
         Ok(count)
+    }
+}
+
+impl ByteStreamBody for StreamBody {
+    IMPL_STREAM_BODY!(ATEN_BLOBSTREAM_REGISTER);
+
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+        if let Ok(_) = self.base.read(buf) {
+            TRACE!(ATEN_BLOBSTREAM_READ_TRIVIAL {
+                STREAM: self, WANT: buf.len()
+            });
+            return Ok(0);
+        }
+        match self.read_nontrivial(buf) {
+            Ok(count) => {
+                TRACE!(ATEN_BLOBSTREAM_READ {
+                    STREAM: self, WANT: buf.len(), GOT: count
+                });
+                TRACE!(ATEN_BLOBSTREAM_READ_DUMP {
+                    STREAM: self, DATA: r3::octets(&buf[..count])
+                });
+                Ok(count)
+            }
+            Err(err) => {
+                TRACE!(ATEN_BLOBSTREAM_READ_FAIL {
+                    STREAM: self, WANT: buf.len(), ERR: r3::errsym(&err)
+                });
+                Err(err)
+            }
+        }
     }
 } // impl ByteStreamBody for StreamBody 
 
