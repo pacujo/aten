@@ -161,8 +161,6 @@ macro_rules! IMPL_STREAM {
 }
 
 pub mod base;
-pub use base::BaseStreamBody;
-
 pub mod blob;
 pub mod dry;
 pub mod empty;

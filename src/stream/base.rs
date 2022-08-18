@@ -3,21 +3,21 @@ use std::io::Result;
 use crate::{WeakDisk, UID, Action, again};
 use crate::stream::{ByteStreamBody};
 
-pub struct BaseStreamBody {
+pub struct StreamBody {
     weak_disk: WeakDisk,
     uid: UID,
     callback: Option<Action>,
 }
 
-impl std::fmt::Display for BaseStreamBody {
+impl std::fmt::Display for StreamBody {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}", self.uid)
     }
-} // impl std::fmt::Display for BaseStreamBody
+} // impl std::fmt::Display for StreamBody
 
-impl BaseStreamBody {
-    pub fn new(weak_disk: WeakDisk, uid: UID) -> BaseStreamBody {
-        BaseStreamBody {
+impl StreamBody {
+    pub fn new(weak_disk: WeakDisk, uid: UID) -> StreamBody {
+        StreamBody {
             weak_disk: weak_disk,
             uid: uid,
             callback: None,
@@ -35,9 +35,9 @@ impl BaseStreamBody {
     pub fn get_callback(&self) -> Option<Action> {
         self.callback.clone()
     }
-} // impl BaseStreamBody
+} // impl StreamBody
 
-impl ByteStreamBody for BaseStreamBody {
+impl ByteStreamBody for StreamBody {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         if buf.len() == 0 {
             Ok(0)
@@ -49,15 +49,15 @@ impl ByteStreamBody for BaseStreamBody {
     fn register(&mut self, callback: Option<Action>) {
         self.callback = callback;
     }
-} // impl ByteStreamBody for BaseStreamBody
+} // impl ByteStreamBody for StreamBody
 
-impl std::fmt::Debug for BaseStreamBody {
+impl std::fmt::Debug for StreamBody {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("BaseStreamBody")
+        f.debug_struct("StreamBody")
             .field("weak_disk", &self.weak_disk)
             .field("uid", &self.uid)
             .field("callback", &self.callback.is_some())
             .finish()
     }
-} // impl Debug for BaseStreamBody 
+} // impl Debug for StreamBody 
 

@@ -5,14 +5,13 @@ use std::io::{Result, Error};
 
 use crate::{Action, Disk, Link, UID, callback_to_string};
 use crate::{again, is_again};
-use crate::stream::{ByteStream, BaseStreamBody, ByteStreamBody};
+use crate::stream::{ByteStream, ByteStreamBody, base};
 use r3::TRACE;
 
-DECLARE_STREAM!(Stream, WeakStream, StreamBody,
-                ATEN_QUEUESTREAM_DROP);
+DECLARE_STREAM!(Stream, WeakStream, StreamBody, ATEN_QUEUESTREAM_DROP);
 
 pub struct StreamBody {
-    base: BaseStreamBody,
+    base: base::StreamBody,
     queue: LinkedList<ByteStream>,
     terminated: bool,
     pending_error: Option<Error>,
@@ -100,7 +99,7 @@ impl Stream {
         let uid = UID::new();
         TRACE!(ATEN_QUEUESTREAM_CREATE { DISK: disk, STREAM: uid });
         let body = Rc::new(RefCell::new(StreamBody {
-            base: BaseStreamBody::new(
+            base: base::StreamBody::new(
                 disk.downgrade(), uid),
             queue: LinkedList::new(),
             terminated: false,

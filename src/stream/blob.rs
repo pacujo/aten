@@ -3,15 +3,14 @@ use std::cell::RefCell;
 use std::io::Result;
 
 use crate::{Action, Disk, Link, UID, callback_to_string};
-use crate::stream::{BaseStreamBody, ByteStreamBody};
+use crate::stream::{ByteStreamBody, base};
 use r3::TRACE;
 
-DECLARE_STREAM!(Stream, WeakStream, StreamBody,
-                ATEN_BLOBSTREAM_DROP);
+DECLARE_STREAM!(Stream, WeakStream, StreamBody, ATEN_BLOBSTREAM_DROP);
 
 #[derive(Debug)]
 struct StreamBody {
-    base: BaseStreamBody,
+    base: base::StreamBody,
     blob: Vec<u8>,
     cursor: usize,
 }
@@ -58,7 +57,7 @@ impl Stream {
             STREAM: uid, BLOB: r3::octets(&blob)
         });
         let body = StreamBody {
-            base: BaseStreamBody::new(disk.downgrade(), uid),
+            base: base::StreamBody::new(disk.downgrade(), uid),
             blob: blob,
             cursor: 0,
         };
