@@ -163,18 +163,16 @@ macro_rules! IMPL_STREAM {
 pub mod basestream;
 pub type BaseStreamBody = basestream::BaseStreamBody;
 
-pub mod emptystream;
-pub type EmptyStream = emptystream::EmptyStream;
+macro_rules! INTRODUCE_STREAM {
+    ($mod:ident, $stream:ident, $weak:ident) => {
+        pub mod $mod;
+        pub use $mod::$stream;
+        pub use $mod::$weak;
+    }
+}
 
-pub mod drystream;
-pub type DryStream = drystream::DryStream;
-
-pub mod zerostream;
-pub type ZeroStream = zerostream::ZeroStream;
-
-pub mod blobstream;
-pub type BlobStream = blobstream::BlobStream;
-
-pub mod queuestream;
-pub type QueueStream = queuestream::QueueStream;
-pub type WeakQueueStream = queuestream::WeakQueueStream;
+INTRODUCE_STREAM!(blobstream, BlobStream, WeakBlobStream);
+INTRODUCE_STREAM!(drystream, DryStream, WeakDryStream);
+INTRODUCE_STREAM!(emptystream, EmptyStream, WeakEmptyStream);
+INTRODUCE_STREAM!(queuestream, QueueStream, WeakQueueStream);
+INTRODUCE_STREAM!(zerostream, ZeroStream, WeakZeroStream);
