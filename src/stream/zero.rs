@@ -14,6 +14,8 @@ struct StreamBody {
 }
 
 impl ByteStreamBody for StreamBody {
+    IMPL_STREAM_BODY!(ATEN_ZEROSTREAM_REGISTER);
+
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         if let Ok(n) = self.base.read(buf) {
             TRACE!(ATEN_ZEROSTREAM_READ_TRIVIAL {
@@ -28,13 +30,6 @@ impl ByteStreamBody for StreamBody {
             STREAM: self, WANT: buf.len(), GOT: buf.len()
         });
         Ok(buf.len())
-    }
-
-    fn register(&mut self, callback: Option<Action>) {
-        TRACE!(ATEN_ZEROSTREAM_REGISTER {
-            STREAM: self, CALLBACK: callback_to_string(&callback)
-        });
-        self.base.register(callback);
     }
 } // impl ByteStreamBody for StreamBody 
 

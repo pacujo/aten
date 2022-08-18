@@ -14,18 +14,13 @@ struct StreamBody {
 }
 
 impl ByteStreamBody for StreamBody {
+    IMPL_STREAM_BODY!(ATEN_EMPTYSTREAM_REGISTER);
+
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         TRACE!(ATEN_EMPTYSTREAM_READ {
             STREAM: self, WANT: buf.len(), GOT: 0
         });
         Ok(0)
-    }
-
-    fn register(&mut self, callback: Option<Action>) {
-        TRACE!(ATEN_EMPTYSTREAM_REGISTER {
-            STREAM: self, CALLBACK: callback_to_string(&callback)
-        });
-        self.base.register(callback);
     }
 } // impl ByteStreamBody for StreamBody
 

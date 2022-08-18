@@ -160,6 +160,18 @@ macro_rules! IMPL_STREAM {
     }
 }
 
+#[macro_export]
+macro_rules! IMPL_STREAM_BODY {
+    ($register:ident) => {
+        fn register(&mut self, callback: Option<Action>) {
+            TRACE!($register {
+                STREAM: self, CALLBACK: callback_to_string(&callback)
+            });
+            self.base.register(callback);
+        }
+    }
+}
+
 pub mod base;
 pub mod blob;
 pub mod dry;
