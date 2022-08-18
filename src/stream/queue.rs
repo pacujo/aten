@@ -60,35 +60,12 @@ impl StreamBody {
     }
 }
 
-impl ByteStreamBody for StreamBody {
-    IMPL_STREAM_BODY!(ATEN_QUEUESTREAM_REGISTER);
-
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        if let Ok(n) = self.base.read(buf) {
-            TRACE!(ATEN_QUEUESTREAM_READ_TRIVIAL {
-                STREAM: self, WANT: buf.len()
-            });
-            return Ok(n);
-        }
-        match self.read_nontrivial(buf) {
-            Ok(count) => {
-                TRACE!(ATEN_QUEUESTREAM_READ {
-                    STREAM: self, WANT: buf.len(), GOT: count
-                });
-                TRACE!(ATEN_QUEUESTREAM_READ_DUMP {
-                    STREAM: self, DATA: r3::octets(&buf[..count])
-                });
-                Ok(count)
-            }
-            Err(err) => {
-                TRACE!(ATEN_QUEUESTREAM_READ_FAIL {
-                    STREAM: self, WANT: buf.len(), ERR: r3::errsym(&err)
-                });
-                Err(err)
-            }
-        }
-    }
-} // impl ByteStreamBody for StreamBody 
+IMPL_STREAM_BODY!(
+    ATEN_QUEUESTREAM_REGISTER,
+    ATEN_QUEUESTREAM_READ_TRIVIAL,
+    ATEN_QUEUESTREAM_READ,
+    ATEN_QUEUESTREAM_READ_DUMP,
+    ATEN_QUEUESTREAM_READ_FAIL);
 
 impl std::fmt::Debug for StreamBody {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

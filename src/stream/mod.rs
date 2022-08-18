@@ -162,13 +162,43 @@ macro_rules! IMPL_STREAM {
 
 #[macro_export]
 macro_rules! IMPL_STREAM_BODY {
-    ($register:ident) => {
-        fn register(&mut self, callback: Option<Action>) {
-            TRACE!($register {
-                STREAM: self, CALLBACK: callback_to_string(&callback)
-            });
-            self.base.register(callback);
-        }
+    ($register:ident,
+     $trivial:ident,
+     $read:ident,
+     $read_dump:ident,
+     $read_fail:ident) => {
+        impl ByteStreamBody for StreamBody {
+            fn register(&mut self, callback: Option<Action>) {
+                TRACE!($register {
+                    STREAM: self, CALLBACK: callback_to_string(&callback)
+                });
+                self.base.register(callback);
+            }
+
+            fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+                if let Ok(_) = self.base.read(buf) {
+                    TRACE!($trivial { STREAM: self, WANT: buf.len() });
+                    return Ok(0);
+                }
+                match self.read_nontrivial(buf) {
+                    Ok(count) => {
+                        TRACE!($read {
+                            STREAM: self, WANT: buf.len(), GOT: count
+                        });
+                        TRACE!($read_dump {
+                            STREAM: self, DATA: r3::octets(&buf[..count])
+                        });
+                        Ok(count)
+                    }
+                    Err(err) => {
+                        TRACE!($read_fail {
+                            STREAM: self, WANT: buf.len(), ERR: r3::errsym(&err)
+                        });
+                        Err(err)
+                    }
+                }
+            }
+        } // impl ByteStreamBody for StreamBody
     }
 }
 

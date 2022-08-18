@@ -19,32 +19,12 @@ impl StreamBody {
     }
 }
 
-impl ByteStreamBody for StreamBody {
-    IMPL_STREAM_BODY!(ATEN_EMPTYSTREAM_REGISTER);
-
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        TRACE!(ATEN_EMPTYSTREAM_READ {
-            STREAM: self, WANT: buf.len(), GOT: 0
-        });
-        match self.read_nontrivial(buf) {
-            Ok(count) => {
-                TRACE!(ATEN_EMPTYSTREAM_READ {
-                    STREAM: self, WANT: buf.len(), GOT: count
-                });
-                TRACE!(ATEN_EMPTYSTREAM_READ_DUMP {
-                    STREAM: self, DATA: r3::octets(&buf[..count])
-                });
-                Ok(count)
-            }
-            Err(err) => {
-                TRACE!(ATEN_EMPTYSTREAM_READ_FAIL {
-                    STREAM: self, WANT: buf.len(), ERR: r3::errsym(&err)
-                });
-                Err(err)
-            }
-        }
-    }
-} // impl ByteStreamBody for StreamBody
+IMPL_STREAM_BODY!(
+    ATEN_EMPTYSTREAM_REGISTER,
+    ATEN_EMPTYSTREAM_READ_TRIVIAL,
+    ATEN_EMPTYSTREAM_READ,
+    ATEN_EMPTYSTREAM_READ_DUMP,
+    ATEN_EMPTYSTREAM_READ_FAIL);
 
 impl Stream {
     IMPL_STREAM!();
