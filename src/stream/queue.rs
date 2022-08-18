@@ -8,10 +8,10 @@ use crate::{again, is_again};
 use crate::stream::{ByteStream, BaseStreamBody, ByteStreamBody};
 use r3::TRACE;
 
-DECLARE_STREAM!(QueueStream, WeakQueueStream, QueueStreamBody,
+DECLARE_STREAM!(Stream, WeakStream, StreamBody,
                 ATEN_QUEUESTREAM_DROP);
 
-pub struct QueueStreamBody {
+pub struct StreamBody {
     base: BaseStreamBody,
     queue: LinkedList<ByteStream>,
     terminated: bool,
@@ -20,7 +20,7 @@ pub struct QueueStreamBody {
     notification_expected: bool,
 }
 
-impl ByteStreamBody for QueueStreamBody {
+impl ByteStreamBody for StreamBody {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         if let Ok(n) = self.base.read(buf) {
             TRACE!(ATEN_QUEUESTREAM_READ_TRIVIAL {
@@ -78,11 +78,11 @@ impl ByteStreamBody for QueueStreamBody {
         });
         self.base.register(callback);
     }
-} // impl ByteStreamBody for QueueStreamBody 
+} // impl ByteStreamBody for StreamBody 
 
-impl std::fmt::Debug for QueueStreamBody {
+impl std::fmt::Debug for StreamBody {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("QueueStreamBody")
+        f.debug_struct("StreamBody")
             .field("base", &self.base)
             .field("queue", &self.queue)
             .field("terminated", &self.terminated)
@@ -91,15 +91,15 @@ impl std::fmt::Debug for QueueStreamBody {
             .field("notification_expected", &self.notification_expected)
             .finish()
     }
-} // impl Debug for QueueStreamBody 
+} // impl Debug for StreamBody 
 
-impl QueueStream {
-    IMPL_STREAM!(WeakQueueStream);
+impl Stream {
+    IMPL_STREAM!(WeakStream);
 
-    pub fn new(disk: &Disk) -> QueueStream {
+    pub fn new(disk: &Disk) -> Stream {
         let uid = UID::new();
         TRACE!(ATEN_QUEUESTREAM_CREATE { DISK: disk, STREAM: uid });
-        let body = Rc::new(RefCell::new(QueueStreamBody {
+        let body = Rc::new(RefCell::new(StreamBody {
             base: BaseStreamBody::new(
                 disk.downgrade(), uid),
             queue: LinkedList::new(),
@@ -108,7 +108,7 @@ impl QueueStream {
             notification: None,
             notification_expected: false,
         }));
-        let stream = QueueStream(Link {
+        let stream = Stream(Link {
             uid: uid,
             body: body.clone(),
         });
@@ -149,4 +149,4 @@ impl QueueStream {
             |disk| { disk.execute(self.make_notifier()); }
         );        
     }
-} // impl QueueStream
+} // impl Stream

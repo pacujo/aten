@@ -1,56 +1,52 @@
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::io::Result;
+use std::io::{Result, Error};
 
 use crate::{Action, Disk, Link, UID, callback_to_string};
 use crate::stream::{BaseStreamBody, ByteStreamBody};
 use r3::TRACE;
 
-DECLARE_STREAM!(ZeroStream, WeakZeroStream, ZeroStreamBody,
-                ATEN_ZEROSTREAM_DROP);
+DECLARE_STREAM!(Stream, WeakStream, StreamBody, ATEN_DRYSTREAM_DROP);
 
 #[derive(Debug)]
-struct ZeroStreamBody {
+struct StreamBody {
     base: BaseStreamBody,
 }
 
-impl ByteStreamBody for ZeroStreamBody {
+impl ByteStreamBody for StreamBody {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         if let Ok(n) = self.base.read(buf) {
-            TRACE!(ATEN_ZEROSTREAM_READ_TRIVIAL {
+            TRACE!(ATEN_DRYSTREAM_READ_TRIVIAL {
                 STREAM: self, WANT: buf.len()
             });
             return Ok(n);
         }
-        for slot in &mut buf.iter_mut() {
-            *slot = 0;
-        }
-        TRACE!(ATEN_ZEROSTREAM_READ {
-            STREAM: self, WANT: buf.len(), GOT: buf.len()
+        TRACE!(ATEN_DRYSTREAM_READ_FAIL {
+            STREAM: self, WANT: buf.len(), ERR: "EAGAIN"
         });
-        Ok(buf.len())
+        Err(Error::from_raw_os_error(libc::EAGAIN))
     }
 
     fn register(&mut self, callback: Option<Action>) {
-        TRACE!(ATEN_ZEROSTREAM_REGISTER {
+        TRACE!(ATEN_DRYSTREAM_REGISTER {
             STREAM: self, CALLBACK: callback_to_string(&callback)
         });
         self.base.register(callback);
     }
-} // impl ByteStreamBody for ZeroStreamBody 
+} // impl ByteStreamBody for StreamBody
 
-impl ZeroStream {
-    IMPL_STREAM!(WeakZeroStream);
+impl Stream {
+    IMPL_STREAM!(WeakStream);
 
-    pub fn new(disk: &Disk) -> ZeroStream {
+    pub fn new(disk: &Disk) -> Stream {
         let uid = UID::new();
-        TRACE!(ATEN_ZEROSTREAM_CREATE { DISK: disk, STREAM: uid });
-        let body = ZeroStreamBody {
+        TRACE!(ATEN_DRYSTREAM_CREATE { DISK: disk, STREAM: uid });
+        let body = StreamBody {
             base: BaseStreamBody::new(disk.downgrade(), uid)
         };
-        ZeroStream(Link {
+        Stream(Link {
             uid: uid,
             body: Rc::new(RefCell::new(body)),
         })
     }
-} // impl ZeroStream
+} // impl Stream

@@ -6,15 +6,14 @@ use crate::{Action, Disk, Link, UID, callback_to_string};
 use crate::stream::{BaseStreamBody, ByteStreamBody};
 use r3::TRACE;
 
-DECLARE_STREAM!(EmptyStream, WeakEmptyStream, EmptyStreamBody,
-                ATEN_EMPTYSTREAM_DROP);
+DECLARE_STREAM!(Stream, WeakStream, StreamBody, ATEN_EMPTYSTREAM_DROP);
 
 #[derive(Debug)]
-struct EmptyStreamBody {
+struct StreamBody {
     base: BaseStreamBody,
 }
 
-impl ByteStreamBody for EmptyStreamBody {
+impl ByteStreamBody for StreamBody {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         TRACE!(ATEN_EMPTYSTREAM_READ {
             STREAM: self, WANT: buf.len(), GOT: 0
@@ -28,20 +27,20 @@ impl ByteStreamBody for EmptyStreamBody {
         });
         self.base.register(callback);
     }
-} // impl ByteStreamBody for EmptyStreamBody
+} // impl ByteStreamBody for StreamBody
 
-impl EmptyStream {
-    IMPL_STREAM!(WeakEmptyStream);
+impl Stream {
+    IMPL_STREAM!(WeakStream);
 
-    pub fn new(disk: &Disk) -> EmptyStream {
+    pub fn new(disk: &Disk) -> Stream {
         let uid = UID::new();
         TRACE!(ATEN_EMPTYSTREAM_CREATE { DISK: disk, STREAM: uid });
-        let body = EmptyStreamBody {
+        let body = StreamBody {
             base: BaseStreamBody::new(disk.downgrade(), uid),
         };
-        EmptyStream(Link {
+        Stream(Link {
             uid: uid,
             body: Rc::new(RefCell::new(body)),
         })
     }
-} // impl EmptyStream
+} // impl Stream

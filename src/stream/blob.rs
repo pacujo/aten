@@ -6,17 +6,17 @@ use crate::{Action, Disk, Link, UID, callback_to_string};
 use crate::stream::{BaseStreamBody, ByteStreamBody};
 use r3::TRACE;
 
-DECLARE_STREAM!(BlobStream, WeakBlobStream, BlobStreamBody,
+DECLARE_STREAM!(Stream, WeakStream, StreamBody,
                 ATEN_BLOBSTREAM_DROP);
 
 #[derive(Debug)]
-struct BlobStreamBody {
+struct StreamBody {
     base: BaseStreamBody,
     blob: Vec<u8>,
     cursor: usize,
 }
 
-impl ByteStreamBody for BlobStreamBody {
+impl ByteStreamBody for StreamBody {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         if let Ok(n) = self.base.read(buf) {
             TRACE!(ATEN_BLOBSTREAM_READ_TRIVIAL {
@@ -44,12 +44,12 @@ impl ByteStreamBody for BlobStreamBody {
         });
         self.base.register(callback);
     }
-} // impl ByteStreamBody for BlobStreamBody 
+} // impl ByteStreamBody for StreamBody 
 
-impl BlobStream {
-    IMPL_STREAM!(WeakBlobStream);
+impl Stream {
+    IMPL_STREAM!(WeakStream);
 
-    pub fn new(disk: &Disk, blob: Vec<u8>) -> BlobStream {
+    pub fn new(disk: &Disk, blob: Vec<u8>) -> Stream {
         let uid = UID::new();
         TRACE!(ATEN_BLOBSTREAM_CREATE {
             DISK: disk, STREAM: uid, BLOB_LEN: blob.len()
@@ -57,14 +57,14 @@ impl BlobStream {
         TRACE!(ATEN_BLOBSTREAM_CREATE_DUMP {
             STREAM: uid, BLOB: r3::octets(&blob)
         });
-        let body = BlobStreamBody {
+        let body = StreamBody {
             base: BaseStreamBody::new(disk.downgrade(), uid),
             blob: blob,
             cursor: 0,
         };
-        BlobStream(Link {
+        Stream(Link {
             uid: uid,
             body: Rc::new(RefCell::new(body)),
         })
     }
-} // impl BlobStream
+} // impl Stream
