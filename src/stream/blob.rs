@@ -6,7 +6,7 @@ use crate::{Action, Disk, Link, UID, callback_to_string};
 use crate::stream::{ByteStreamBody, base};
 use r3::TRACE;
 
-DECLARE_STREAM!(Stream, WeakStream, StreamBody, ATEN_BLOBSTREAM_DROP);
+DECLARE_STREAM!(ATEN_BLOBSTREAM_DROP, ATEN_BLOBSTREAM_UPPED_MISS);
 
 #[derive(Debug)]
 struct StreamBody {
@@ -46,7 +46,7 @@ impl ByteStreamBody for StreamBody {
 } // impl ByteStreamBody for StreamBody 
 
 impl Stream {
-    IMPL_STREAM!(WeakStream);
+    IMPL_STREAM!();
 
     pub fn new(disk: &Disk, blob: Vec<u8>) -> Stream {
         let uid = UID::new();

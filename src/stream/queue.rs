@@ -8,7 +8,7 @@ use crate::{again, is_again};
 use crate::stream::{ByteStream, ByteStreamBody, base};
 use r3::TRACE;
 
-DECLARE_STREAM!(Stream, WeakStream, StreamBody, ATEN_QUEUESTREAM_DROP);
+DECLARE_STREAM!(ATEN_QUEUESTREAM_DROP, ATEN_QUEUESTREAM_UPPED_MISS);
 
 pub struct StreamBody {
     base: base::StreamBody,
@@ -93,7 +93,7 @@ impl std::fmt::Debug for StreamBody {
 } // impl Debug for StreamBody 
 
 impl Stream {
-    IMPL_STREAM!(WeakStream);
+    IMPL_STREAM!();
 
     pub fn new(disk: &Disk) -> Stream {
         let uid = UID::new();

@@ -81,60 +81,60 @@ pub trait DebuggableByteStreamBody: ByteStreamBody + std::fmt::Debug {}
 
 #[macro_export]
 macro_rules! DECLARE_STREAM {
-    ($stream:ident, $weak:ident, $body:ident, $drop:ident) => {
-        impl std::fmt::Display for $body {
+    ($drop:ident, $up_miss:ident) => {
+        impl std::fmt::Display for StreamBody {
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 write!(f, "{}", self.base)
             }
         }
 
-        impl Drop for $body {
+        impl Drop for StreamBody {
             fn drop(&mut self) {
                 TRACE!($drop { STREAM: self });
             }
         }
 
-        impl crate::stream::DebuggableByteStreamBody for $body {}
+        impl crate::stream::DebuggableByteStreamBody for StreamBody {}
 
         #[derive(Debug)]
-        pub struct $stream(crate::Link<$body>);
+        pub struct Stream(crate::Link<StreamBody>);
 
-        impl From<$stream> for crate::stream::ByteStream {
-            fn from(stream: $stream) -> crate::stream::ByteStream {
+        impl From<Stream> for crate::stream::ByteStream {
+            fn from(stream: Stream) -> crate::stream::ByteStream {
                 stream.as_byte_stream()
             }
         }
 
         #[derive(Debug)]
-        pub struct $weak(crate::WeakLink<$body>);
+        pub struct WeakStream(crate::WeakLink<StreamBody>);
 
-        impl $weak {
-            pub fn upgrade(&self) -> Option<$stream> {
+        impl WeakStream {
+            pub fn upgrade(&self) -> Option<Stream> {
                 self.0.body.upgrade().map(|body|
-                                          $stream(Link {
+                                          Stream(Link {
                                               uid: self.0.uid,
                                               body: body,
                                           }))
             }
 
-            pub fn upped<F>(&self, f: F) where F: Fn(&$stream) {
+            pub fn upped<F>(&self, f: F) where F: Fn(&Stream) {
                 match self.upgrade() {
                     Some(stream) => { f(&stream); }
                     None => {
-                        TRACE!(ATEN_QUEUESTREAM_UPPED_MISS { STREAM: self });
+                        TRACE!($up_miss { STREAM: self });
                     }
                 };
             }
         }
 
-        crate::DISPLAY_LINK_UID!($stream);
-        crate::DISPLAY_LINK_UID!($weak);
+        crate::DISPLAY_LINK_UID!(Stream);
+        crate::DISPLAY_LINK_UID!(WeakStream);
     }
 }
 
 #[macro_export]
 macro_rules! IMPL_STREAM {
-    ($weak:ident) => {
+    () => {
         fn get_callback(&self) -> Option<Action> {
             self.0.body.borrow().base.get_callback()
         }
@@ -143,8 +143,8 @@ macro_rules! IMPL_STREAM {
             crate::stream::ByteStream::new(self.0.uid, self.0.body.clone())
         }
 
-        pub fn downgrade(&self) -> $weak {
-            $weak(crate::WeakLink {
+        pub fn downgrade(&self) -> WeakStream {
+            WeakStream(crate::WeakLink {
                 uid: self.0.uid,
                 body: std::rc::Rc::downgrade(&self.0.body),
             })
