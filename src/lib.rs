@@ -11,6 +11,7 @@ use std::io::{Error, Result};
 use std::option::Option;
 use std::os::unix::io::RawFd;
 use std::rc::{Rc, Weak};
+use std::time::{Instant, Duration};
 use r3::{TRACE, TRACE_ENABLED, errsym};
 
 pub type UID = r3::UID;
@@ -42,242 +43,6 @@ pub fn callback_to_string(callback: &Option<Action>) -> String {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub struct Time(u64);
-
-impl Time {
-    pub fn immemorial() -> Time {
-        Time(0)
-    }
-
-    fn now() -> Time {
-        let mut t = libc::timespec { tv_sec: 0, tv_nsec: 0, };
-        let _x = unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut t) };
-        let ns = t.tv_sec as u64 * 1_000_000_000 + t.tv_nsec as u64;
-        Time(ns)
-    }
-} // impl Time
-
-impl PartialEq for Time {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
-} // impl PartialEq for Time
-
-impl Eq for Time {}
-
-impl PartialOrd for Time {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.0.partial_cmp(&other.0)
-    }
-
-    fn lt(&self, other: &Self) -> bool {
-        self.0.lt(&other.0)
-    }
-
-    fn le(&self, other: &Self) -> bool {
-        self.0.le(&other.0)
-    }
-
-    fn gt(&self, other: &Self) -> bool {
-        self.0.gt(&other.0)
-    }
-
-    fn ge(&self, other: &Self) -> bool {
-        self.0.ge(&other.0)
-    }
-}
-
-impl Ord for Time {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.cmp(&other.0)
-    }
-
-    fn max(self, other: Self) -> Self {
-        Time(self.0.max(other.0))
-    }
-
-    fn min(self, other: Self) -> Self {
-        Time(self.0.min(other.0))
-    }
-
-    fn clamp(self, min: Self, max: Self) -> Self {
-        Time(self.0.clamp(min.0, max.0))
-    }
-} // impl Ord for Time
-
-impl std::ops::Add<Duration> for Time {
-    type Output = Time;
-
-    fn add(self, other: Duration) -> Time {
-        let sum = self.0.wrapping_add(other.0 as u64);
-        assert!(if other.0 < 0 { sum < self.0 } else { sum >= self.0 });
-        Time(sum)
-    }
-} // impl std::ops::Add for Time
-
-impl std::ops::Sub for Time {
-    type Output = Duration;
-
-    fn sub(self, other: Self) -> Duration {
-        let diff = self.0.wrapping_sub(other.0) as i64;
-        assert!(if self.0 >= other.0 { diff >= 0 } else { diff < 0 });
-        Duration(diff)
-    }
-} // impl std::ops::Sub for Time
-
-impl std::fmt::Display for Time {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        r3::format_in_threes(f, self.0)
-    }
-} // impl std::fmt::Display for Time
-
-#[derive(Debug, Copy, Clone)]
-pub struct Duration(i64);
-
-impl Duration {
-    pub fn from_ns(n: i64) -> Duration { n * Duration(1) }
-    pub fn from_μs(n: i64) -> Duration { n * Duration(1_000) }
-    pub fn from_us(n: i64) -> Duration { Duration::from_μs(n) }
-    pub fn from_ms(n: i64) -> Duration { n * Duration(1_000_000) }
-    pub fn from_s(n: i64) -> Duration { n * Duration(1_000_000_000) }
-    pub fn from_min(n: i64) -> Duration { n * Duration(60_000_000_000) }
-    pub fn from_h(n: i64) -> Duration { n * Duration(3_600_000_000_000) }
-    pub fn from_days(n: i64) -> Duration { n * Duration(86_400_000_000_000) }
-
-    pub fn from_f64(x: f64) -> Duration { // given in seconds
-        let seconds = x.trunc() as i64;
-        assert_ne!(seconds, i64::MAX);
-        assert_ne!(seconds, i64::MIN);
-        let nanoseconds = (x.fract() * 1e9).round() as i64;
-        Duration::from_s(seconds) + Duration::from_ns(nanoseconds)
-    }
-
-    pub fn elapsed(&self) -> bool {
-        self.0 <= 0
-    }
-
-    fn scale(&self, factor: i64) -> i64 { // round up
-        if self.0 > 0 {
-            (self.0 - 1) / factor + 1
-        } else {
-            self.0 / factor
-        }
-    }
-
-    pub fn to_ns(&self) -> i64 { self.scale(1) }
-    pub fn to_μs(&self) -> i64 { self.scale(1_000) }
-    pub fn to_us(&self) -> i64 { self.to_μs() }
-    pub fn to_ms(&self) -> i64 { self.scale(1_000_000) }
-    pub fn to_s(&self) -> i64 { self.scale(1_000_000_000) }
-    pub fn to_min(&self) -> i64 { self.scale(60_000_000_000) }
-    pub fn to_h(&self) -> i64 { self.scale(3_600_000_000_000) }
-    pub fn to_days(&self) -> i64 { self.scale(86_400_000_000_000) }
-    pub fn to_f64(&self) -> f64 { self.to_ns() as f64 * 1e-9f64 }
-} // impl Duration
-
-impl PartialEq for Duration {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
-} // impl PartialEq for Duration
-
-impl Eq for Duration {}
-
-impl PartialOrd for Duration {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.0.partial_cmp(&other.0)
-    }
-
-    fn lt(&self, other: &Self) -> bool {
-        self.0.lt(&other.0)
-    }
-
-    fn le(&self, other: &Self) -> bool {
-        self.0.le(&other.0)
-    }
-
-    fn gt(&self, other: &Self) -> bool {
-        self.0.gt(&other.0)
-    }
-
-    fn ge(&self, other: &Self) -> bool {
-        self.0.ge(&other.0)
-    }
-}
-
-impl Ord for Duration {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.cmp(&other.0)
-    }
-
-    fn max(self, other: Self) -> Self {
-        Duration(self.0.max(other.0))
-    }
-
-    fn min(self, other: Self) -> Self {
-        Duration(self.0.min(other.0))
-    }
-
-    fn clamp(self, min: Self, max: Self) -> Self {
-        Duration(self.0.clamp(min.0, max.0))
-    }
-} // impl Ord for Duration
-
-impl std::ops::Add for Duration {
-    type Output = Self;
-
-    fn add(self, other: Self) -> Self {
-        let sum = self.0.wrapping_add(other.0);
-        assert!(if other.0 < 0 { sum < self.0 } else { sum >= self.0 });
-        Duration(sum)
-    }
-} // impl std::ops::Add for Duration
-
-impl std::ops::Add<Time> for Duration {
-    type Output = Time;
-
-    fn add(self, other: Time) -> Time {
-        other + self
-    }
-} // impl std::ops::Add<Time> for Duration
-
-impl std::ops::Sub for Duration {
-    type Output = Duration;
-
-    fn sub(self, other: Self) -> Self {
-        let diff = self.0.wrapping_sub(other.0);
-        assert!(if self.0 >= other.0 { diff >= 0 } else { diff < 0 });
-        Duration(diff)
-    }
-} // impl std::ops::Sub for Duration
-
-impl std::ops::Mul<i64> for Duration {
-    type Output = Duration;
-
-    fn mul(self, other: i64) -> Duration {
-        let product = self.0.wrapping_mul(other);
-        assert!(other == 0 || product / other == self.0);
-        Duration(product)
-    }
-} // impl std::ops::Mul<i64> for Duration
-
-impl std::ops::Mul<Duration> for i64 {
-    type Output = Duration;
-
-    fn mul(self, other: Duration) -> Duration {
-        let product = self.wrapping_mul(other.0);
-        assert!(other.0 == 0 || product / other.0 == self);
-        Duration(product)
-    }
-} // impl std::ops::Mul<Duration> for i64
-
-impl std::fmt::Display for Duration {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        r3::format_in_threes_signed(f, self.0)
-    }
-} // impl std::fmt::Display for Duration
-
 #[derive(Debug)]
 struct Link<Body: ?Sized> {
     uid: UID,
@@ -299,7 +64,7 @@ enum TimerKind {
 
 struct TimerBody {
     disk_ref: WeakDisk,
-    expires: Time,
+    expires: Instant,
     uid: UID,
     kind: TimerKind,
     action: Option<Action>,
@@ -372,11 +137,12 @@ struct DiskBody {
     uid: UID,
     poll_fd: RawFd,
     immediate: LinkedList<Rc<RefCell<TimerBody>>>,
-    timers: BTreeMap<(Time, UID), Rc<RefCell<TimerBody>>>,
+    timers: BTreeMap<(Instant, UID), Rc<RefCell<TimerBody>>>,
     registrations: HashMap<RawFd, Event>,
     quit: bool,
     wakeup_fd: Option<RawFd>,
-    recent: Time,
+    recent: Instant,
+    rounder_upper: Duration,
 }
 
 impl Drop for DiskBody {
@@ -409,7 +175,8 @@ impl Disk {
             registrations: HashMap::new(),
             quit: false,
             wakeup_fd: None,
-            recent: Time::immemorial(),
+            recent: Instant::now(),
+            rounder_upper: Duration::from_millis(1) - Duration::from_nanos(1),
         };
         let disk = Disk(Link {
             uid: uid,
@@ -428,8 +195,8 @@ impl Disk {
         self.0.body.borrow_mut()
     }
 
-    pub fn now(&self) -> Time {
-        let t = Time::now();
+    pub fn now(&self) -> Instant {
+        let t = Instant::now();
         self.mut_body().recent = t;
         t
     }
@@ -445,7 +212,8 @@ impl Disk {
         }
     }
 
-    fn new_timer(&self, uid: UID, kind: TimerKind, expires: Time, action: Action)
+    fn new_timer(&self, uid: UID, kind: TimerKind, expires: Instant,
+                 action: Action)
                  -> (Timer, Rc<RefCell<TimerBody>>) {
         self.wake_up();
         let stack_trace =
@@ -474,7 +242,7 @@ impl Disk {
         let now = self.body().recent;
         let timer_uid = UID::new();
         TRACE!(ATEN_DISK_EXECUTE {
-            DISK: self, TIMER: timer_uid, EXPIRES: now,
+            DISK: self, TIMER: timer_uid, EXPIRES: r3::time(now),
             ACTION: action_to_string(&action),
         });
         let (timer, timer_ref) = self.new_timer(
@@ -483,10 +251,10 @@ impl Disk {
         timer
     }
 
-    pub fn schedule(&self, expires: Time, action: Action) -> Timer {
+    pub fn schedule(&self, expires: Instant, action: Action) -> Timer {
         let timer_uid = UID::new();
         TRACE!(ATEN_DISK_SCHEDULE {
-            DISK: self, TIMER: timer_uid, EXPIRES: expires,
+            DISK: self, TIMER: timer_uid, EXPIRES: r3::time(expires),
             ACTION: action_to_string(&action),
         });
         let (timer, timer_ref) = self.new_timer(
@@ -593,7 +361,7 @@ impl Disk {
                 }
                 NextStep::NextTimerExpiry(expiry) => {
                     TRACE!(ATEN_DISK_POLL_NEXT_TIMER {
-                        DISK: self, EXPIRY: expiry
+                        DISK: self, EXPIRY: r3::time(expiry)
                     });
                     return PoppedTimer::NextTimerExpiry(expiry);
                 }
@@ -605,25 +373,23 @@ impl Disk {
         }
     }
 
-    fn milliseconds_remaining(&self, until: Time, cap: Option<Duration>) -> i32 {
-        let mut duration = until - self.now();
-        if duration.elapsed() {
-            return 0;
-        }
+    fn milliseconds_remaining(&self, until: Instant, cap: Option<Duration>)
+                              -> i32 {
+        let mut duration = until.saturating_duration_since(self.now());
         if let Some(max_duration) = cap {
             if max_duration < duration {
                 duration = max_duration;
             }
         }
-        let ms = duration.to_ms();
-        if ms > i32::MAX as i64 {
+        let ms = (duration + self.body().rounder_upper).as_millis();
+        if ms > i32::MAX as u128 {
             i32::MAX
         } else {
             ms as i32
         }
     }
 
-    fn sleep(&self, until: Time) -> Result<()> {
+    fn sleep(&self, until: Instant) -> Result<()> {
         if let Err(err) = epoll_wait(
             self.fd(), &mut vec![], self.milliseconds_remaining(until, None)) {
             TRACE!(ATEN_DISK_SLEEP_FAIL { DISK: self, ERR: errsym(&err) });
@@ -632,7 +398,7 @@ impl Disk {
         Ok(())
     }
 
-    fn try_io(&self, next_expiry: Time) -> Result<Option<Time>> {
+    fn try_io(&self, next_expiry: Instant) -> Result<Option<Instant>> {
         let body = self.body();
         let mut epoll_events = vec![libc::epoll_event {
             events: 0,
@@ -661,7 +427,7 @@ impl Disk {
         return Ok(Some(body.recent));
     }
 
-    pub fn poll(&self) -> Result<Option<Time>> {
+    pub fn poll(&self) -> Result<Option<Instant>> {
         match self.pop_timer() {
             PoppedTimer::TimerExpired(action) => {
                 (action)();
@@ -682,7 +448,7 @@ impl Disk {
         self.wake_up();
     }
 
-    fn take_immediate_action(&self) -> Option<Time> {
+    fn take_immediate_action(&self) -> Option<Instant> {
         const MAX_IO_STARVATION: u8 = 20;
         let mut countdown = MAX_IO_STARVATION;
         while countdown > 0 {
@@ -906,8 +672,8 @@ impl Disk {
         Ok(())
     }
 
-    pub fn flush(&self, expires: Time) -> Result<()> {
-        TRACE!(ATEN_DISK_FLUSH { DISK: self, EXPIRES: expires });
+    pub fn flush(&self, expires: Instant) -> Result<()> {
+        TRACE!(ATEN_DISK_FLUSH { DISK: self, EXPIRES: r3::time(expires) });
         loop {
             let now = self.now();
             if now >= expires {
@@ -939,14 +705,29 @@ impl Disk {
         })
     }
 
-    pub fn in_days(&self, n: i64) -> Time { self.now() + Duration::from_days(n) }
-    pub fn in_h(&self, n: i64) -> Time { self.now() + Duration::from_h(n) }
-    pub fn in_min(&self, n: i64) -> Time { self.now() + Duration::from_min(n) }
-    pub fn in_s(&self, n: i64) -> Time { self.now() + Duration::from_s(n) }
-    pub fn in_ms(&self, n: i64) -> Time { self.now() + Duration::from_ms(n) }
-    pub fn in_μs(&self, n: i64) -> Time { self.now() + Duration::from_μs(n) }
-    pub fn in_ns(&self, n: i64) -> Time { self.now() + Duration::from_ns(n) }
-    pub fn in_f64(&self, x: f64) -> Time { self.now() + Duration::from_f64(x) }
+    pub fn in_secs(&self, n: u64) -> Instant {
+        self.now() + Duration::from_secs(n)
+    }
+
+    pub fn in_millis(&self, n: u64) -> Instant {
+        self.now() + Duration::from_millis(n)
+    }
+
+    pub fn in_micross(&self, n: u64) -> Instant {
+        self.now() + Duration::from_micros(n)
+    }
+
+    pub fn in_nanos(&self, n: u64) -> Instant {
+        self.now() + Duration::from_nanos(n)
+    }
+
+    pub fn in_secs_f32(&self, x: f32) -> Instant {
+        self.now() + Duration::from_secs_f32(x)
+    }
+
+    pub fn in_secs_f64(&self, x: f64) -> Instant {
+        self.now() + Duration::from_secs_f64(x)
+    }
 } // impl Disk
 
 DISPLAY_LINK_UID!(Disk);
@@ -976,14 +757,14 @@ impl WeakDisk {
 #[derive(Debug)]
 enum NextStep {
     ImmediateAction,
-    TimerExpired(Time, UID),
-    NextTimerExpiry(Time),
+    TimerExpired(Instant, UID),
+    NextTimerExpiry(Instant),
     InfiniteWait,
 }
 
 enum PoppedTimer {
     TimerExpired(Action),
-    NextTimerExpiry(Time),
+    NextTimerExpiry(Instant),
     InfiniteWait,
 }
 
