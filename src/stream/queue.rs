@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::collections::LinkedList;
 use std::io::{Result, Error};
 
-use crate::{Action, Disk, Link, UID, callback_to_string};
+use crate::{Action, Disk, Link, UID};
 use crate::{again, is_again};
 use crate::stream::{ByteStream, ByteStreamBody, base};
 use r3::TRACE;

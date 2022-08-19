@@ -88,10 +88,10 @@ macro_rules! DECLARE_STREAM {
      $read:ident,
      $read_dump:ident,
      $read_fail:ident) => {
-        impl ByteStreamBody for StreamBody {
-            fn register(&mut self, callback: Option<Action>) {
+        impl crate::stream::ByteStreamBody for StreamBody {
+            fn register(&mut self, callback: Option<crate::Action>) {
                 TRACE!($register {
-                    STREAM: self, CALLBACK: callback_to_string(&callback)
+                    STREAM: self, CALLBACK: crate::callback_to_string(&callback)
                 });
                 self.base.register(callback);
             }
@@ -174,7 +174,7 @@ macro_rules! DECLARE_STREAM {
 #[macro_export]
 macro_rules! IMPL_STREAM {
     () => {
-        fn get_callback(&self) -> Option<Action> {
+        fn get_callback(&self) -> Option<crate::Action> {
             self.0.body.borrow().base.get_callback()
         }
 
@@ -193,7 +193,7 @@ macro_rules! IMPL_STREAM {
             self.0.body.borrow_mut().read(buf)
         }
 
-        pub fn register(&self, callback: Option<Action>) {
+        pub fn register(&self, callback: Option<crate::Action>) {
             self.0.body.borrow_mut().register(callback)
         }
     }

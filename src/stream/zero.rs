@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::io::Result;
 
-use crate::{Action, Disk, Link, UID, callback_to_string};
+use crate::{Disk, Link, UID};
 use crate::stream::{ByteStreamBody, base};
 use r3::TRACE;
 
