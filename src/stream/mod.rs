@@ -198,28 +198,6 @@ macro_rules! IMPL_STREAM {
         pub fn register(&self, callback: Option<crate::Action>) {
             self.0.body.borrow_mut().register(callback)
         }
-    }
-}
-
-#[macro_export]
-macro_rules! IMPL_STREAM_WRAPPEE {
-    () => {
-        IMPL_STREAM!();
-
-        fn make_notifier(&self) -> crate::Action {
-            let weak_stream = self.downgrade();
-            Rc::new(move || {
-                weak_stream.upped(|stream| {
-                    let action =
-                        if let Some(action) = &stream.0.body.borrow().notification {
-                            action.clone()
-                        } else {
-                            unreachable!();
-                        };
-                    (action)();
-                });
-            })
-        }
 
         fn register_wrappee_callback(
             &self, wrappee: &crate::stream::ByteStream) {
@@ -227,6 +205,17 @@ macro_rules! IMPL_STREAM_WRAPPEE {
             self.0.body.borrow().base.get_weak_disk().upped(
                 |disk| { disk.execute(self.make_notifier()); }
             );        
+        }
+
+        fn make_notifier(&self) -> crate::Action {
+            let weak_stream = self.downgrade();
+            Rc::new(move || {
+                weak_stream.upped(|stream| {
+                    if let Some(action) = stream.get_callback() {
+                        (action)();
+                    }
+                });
+            })
         }
     }
 }

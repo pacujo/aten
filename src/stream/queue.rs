@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::collections::LinkedList;
 use std::io::{Result, Error};
 
-use crate::{Action, Disk, Link, UID};
+use crate::{Disk, Link, UID};
 use crate::{again, is_again};
 use crate::stream::{ByteStream, ByteStreamBody, base};
 use r3::TRACE;
@@ -17,12 +17,12 @@ DECLARE_STREAM!(
     ATEN_QUEUESTREAM_READ_DUMP,
     ATEN_QUEUESTREAM_READ_FAIL);
 
+#[derive(Debug)]
 pub struct StreamBody {
     base: base::StreamBody,
     queue: LinkedList<ByteStream>,
     terminated: bool,
     pending_error: Option<Error>,
-    notification: Option<Action>,
     notification_expected: bool,
 }
 
@@ -67,21 +67,8 @@ impl StreamBody {
     }
 }
 
-impl std::fmt::Debug for StreamBody {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("StreamBody")
-            .field("base", &self.base)
-            .field("queue", &self.queue)
-            .field("terminated", &self.terminated)
-            .field("pending_error", &self.pending_error)
-            .field("notification", &self.notification.is_some())
-            .field("notification_expected", &self.notification_expected)
-            .finish()
-    }
-} // impl Debug for StreamBody 
-
 impl Stream {
-    IMPL_STREAM_WRAPPEE!();
+    IMPL_STREAM!();
 
     pub fn new(disk: &Disk) -> Stream {
         let uid = UID::new();
@@ -91,24 +78,12 @@ impl Stream {
             queue: LinkedList::new(),
             terminated: false,
             pending_error: None,
-            notification: None,
             notification_expected: false,
         }));
-        let stream = Stream(Link {
+        Stream(Link {
             uid: uid,
             body: body.clone(),
-        });
-        // "tie the knot"
-        let weak_stream = stream.downgrade();
-        let action = Rc::new(move || {
-            weak_stream.upped(|stream| {
-                if let Some(action) = stream.get_callback() {
-                    (action)();
-                }
-            });
-        });
-        body.borrow_mut().notification = Some(action);
-        stream
+        })
     }
 
     pub fn enqueue(&self, wrappee: &ByteStream) {

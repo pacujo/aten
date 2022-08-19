@@ -3,8 +3,7 @@ use std::cell::RefCell;
 //use std::io::{Result, Error};
 use std::io::Result;
 
-use crate::{Action, Disk, Link, UID};
-//use crate::{again, is_again};
+use crate::{Disk, Link, UID};
 use crate::stream::{ByteStream, ByteStreamBody, base};
 use r3::TRACE;
 
@@ -17,6 +16,7 @@ DECLARE_STREAM!(
     ATEN_SUBSTREAM_READ_DUMP,
     ATEN_SUBSTREAM_READ_FAIL);
 
+#[derive(Debug)]
 pub struct StreamBody {
     base: base::StreamBody,
     wrappee: ByteStream,
@@ -24,7 +24,6 @@ pub struct StreamBody {
     end: Option<u128>,
     exhaust: bool,
     cursor: u128,
-    notification: Option<Action>,
 }
 
 impl StreamBody {
@@ -69,22 +68,8 @@ impl StreamBody {
     }
 }
 
-impl std::fmt::Debug for StreamBody {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("StreamBody")
-            .field("base", &self.base)
-            .field("wrappee", &self.wrappee)
-            .field("begin", &self.begin)
-            .field("end", &self.end)
-            .field("exhaust", &self.exhaust)
-            .field("cursor", &self.cursor)
-            .field("notification", &self.notification.is_some())
-            .finish()
-    }
-} // impl Debug for StreamBody 
-
 impl Stream {
-    IMPL_STREAM_WRAPPEE!();
+    IMPL_STREAM!();
 
     pub fn new(disk: &Disk,
                wrappee: &ByteStream,
@@ -107,22 +92,11 @@ impl Stream {
             end: end,
             exhaust: exhaust,
             cursor: 0,
-            notification: None,
         }));
         let stream = Stream(Link {
             uid: uid,
             body: body.clone(),
         });
-        // "tie the knot"
-        let weak_stream = stream.downgrade();
-        let action = Rc::new(move || {
-            weak_stream.upped(|stream| {
-                if let Some(action) = stream.get_callback() {
-                    (action)();
-                }
-            });
-        });
-        body.borrow_mut().notification = Some(action);
         stream.register_wrappee_callback(wrappee);
         stream
     }
