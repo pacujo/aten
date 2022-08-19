@@ -81,14 +81,13 @@ impl std::fmt::Debug for StreamBody {
 } // impl Debug for StreamBody 
 
 impl Stream {
-    IMPL_STREAM!();
+    IMPL_STREAM_WRAPPEE!();
 
     pub fn new(disk: &Disk) -> Stream {
         let uid = UID::new();
         TRACE!(ATEN_QUEUESTREAM_CREATE { DISK: disk, STREAM: uid });
         let body = Rc::new(RefCell::new(StreamBody {
-            base: base::StreamBody::new(
-                disk.downgrade(), uid),
+            base: base::StreamBody::new(disk.downgrade(), uid),
             queue: LinkedList::new(),
             terminated: false,
             pending_error: None,
@@ -112,28 +111,10 @@ impl Stream {
         stream
     }
 
-    fn make_notifier(&self) -> Action {
-        let weak_stream = self.downgrade();
-        Rc::new(move || {
-            weak_stream.upped(|stream| {
-                let action =
-                    if let Some(action) = &stream.0.body.borrow().notification {
-                        action.clone()
-                    } else {
-                        unreachable!();
-                    };
-                (action)();
-            });
-        })
-    }
-
-    pub fn enqueue(&self, other: &ByteStream) {
+    pub fn enqueue(&self, wrappee: &ByteStream) {
         assert!(!self.0.body.borrow().terminated);
-        TRACE!(ATEN_QUEUESTREAM_ENQUEUE { STREAM: self, OTHER: other });
-        self.0.body.borrow_mut().queue.push_back(other.clone());
-        other.register(Some(self.make_notifier()));
-        self.0.body.borrow().base.get_weak_disk().upped(
-            |disk| { disk.execute(self.make_notifier()); }
-        );        
+        TRACE!(ATEN_QUEUESTREAM_ENQUEUE { STREAM: self, WRAPPEE: wrappee });
+        self.0.body.borrow_mut().queue.push_back(wrappee.clone());
+        self.register_wrappee_callback(wrappee);
     }
 } // impl Stream
