@@ -6,7 +6,14 @@ use crate::{Action, Disk, Link, UID, callback_to_string};
 use crate::stream::{ByteStreamBody, base};
 use r3::TRACE;
 
-DECLARE_STREAM!(ATEN_DRYSTREAM_DROP, ATEN_DRYSTREAM_UPPED_MISS);
+DECLARE_STREAM!(
+    ATEN_DRYSTREAM_DROP,
+    ATEN_DRYSTREAM_UPPED_MISS,
+    ATEN_DRYSTREAM_REGISTER,
+    ATEN_DRYSTREAM_READ_TRIVIAL,
+    ATEN_DRYSTREAM_READ,
+    ATEN_DRYSTREAM_READ_DUMP,
+    ATEN_DRYSTREAM_READ_FAIL);
 
 #[derive(Debug)]
 struct StreamBody {
@@ -18,13 +25,6 @@ impl StreamBody {
         Err(Error::from_raw_os_error(libc::EAGAIN))
     }
 }
-
-IMPL_STREAM_BODY!(
-    ATEN_DRYSTREAM_REGISTER,
-    ATEN_DRYSTREAM_READ_TRIVIAL,
-    ATEN_DRYSTREAM_READ,
-    ATEN_DRYSTREAM_READ_DUMP,
-    ATEN_DRYSTREAM_READ_FAIL);
 
 impl Stream {
     IMPL_STREAM!();

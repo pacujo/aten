@@ -8,7 +8,14 @@ use crate::{again, is_again};
 use crate::stream::{ByteStream, ByteStreamBody, base};
 use r3::TRACE;
 
-DECLARE_STREAM!(ATEN_QUEUESTREAM_DROP, ATEN_QUEUESTREAM_UPPED_MISS);
+DECLARE_STREAM!(
+    ATEN_QUEUESTREAM_DROP,
+    ATEN_QUEUESTREAM_UPPED_MISS,
+    ATEN_QUEUESTREAM_REGISTER,
+    ATEN_QUEUESTREAM_READ_TRIVIAL,
+    ATEN_QUEUESTREAM_READ,
+    ATEN_QUEUESTREAM_READ_DUMP,
+    ATEN_QUEUESTREAM_READ_FAIL);
 
 pub struct StreamBody {
     base: base::StreamBody,
@@ -59,13 +66,6 @@ impl StreamBody {
         }
     }
 }
-
-IMPL_STREAM_BODY!(
-    ATEN_QUEUESTREAM_REGISTER,
-    ATEN_QUEUESTREAM_READ_TRIVIAL,
-    ATEN_QUEUESTREAM_READ,
-    ATEN_QUEUESTREAM_READ_DUMP,
-    ATEN_QUEUESTREAM_READ_FAIL);
 
 impl std::fmt::Debug for StreamBody {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

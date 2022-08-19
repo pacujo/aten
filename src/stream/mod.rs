@@ -81,7 +81,46 @@ pub trait DebuggableByteStreamBody: ByteStreamBody + std::fmt::Debug {}
 
 #[macro_export]
 macro_rules! DECLARE_STREAM {
-    ($drop:ident, $up_miss:ident) => {
+    ($drop:ident,
+     $up_miss:ident,
+     $register:ident,
+     $trivial:ident,
+     $read:ident,
+     $read_dump:ident,
+     $read_fail:ident) => {
+        impl ByteStreamBody for StreamBody {
+            fn register(&mut self, callback: Option<Action>) {
+                TRACE!($register {
+                    STREAM: self, CALLBACK: callback_to_string(&callback)
+                });
+                self.base.register(callback);
+            }
+
+            fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+                if let Ok(_) = self.base.read(buf) {
+                    TRACE!($trivial { STREAM: self, WANT: buf.len() });
+                    return Ok(0);
+                }
+                match self.read_nontrivial(buf) {
+                    Ok(count) => {
+                        TRACE!($read {
+                            STREAM: self, WANT: buf.len(), GOT: count
+                        });
+                        TRACE!($read_dump {
+                            STREAM: self, DATA: r3::octets(&buf[..count])
+                        });
+                        Ok(count)
+                    }
+                    Err(err) => {
+                        TRACE!($read_fail {
+                            STREAM: self, WANT: buf.len(), ERR: r3::errsym(&err)
+                        });
+                        Err(err)
+                    }
+                }
+            }
+        }
+
         impl std::fmt::Display for StreamBody {
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 write!(f, "{}", self.base)
@@ -157,48 +196,6 @@ macro_rules! IMPL_STREAM {
         pub fn register(&self, callback: Option<Action>) {
             self.0.body.borrow_mut().register(callback)
         }
-    }
-}
-
-#[macro_export]
-macro_rules! IMPL_STREAM_BODY {
-    ($register:ident,
-     $trivial:ident,
-     $read:ident,
-     $read_dump:ident,
-     $read_fail:ident) => {
-        impl ByteStreamBody for StreamBody {
-            fn register(&mut self, callback: Option<Action>) {
-                TRACE!($register {
-                    STREAM: self, CALLBACK: callback_to_string(&callback)
-                });
-                self.base.register(callback);
-            }
-
-            fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-                if let Ok(_) = self.base.read(buf) {
-                    TRACE!($trivial { STREAM: self, WANT: buf.len() });
-                    return Ok(0);
-                }
-                match self.read_nontrivial(buf) {
-                    Ok(count) => {
-                        TRACE!($read {
-                            STREAM: self, WANT: buf.len(), GOT: count
-                        });
-                        TRACE!($read_dump {
-                            STREAM: self, DATA: r3::octets(&buf[..count])
-                        });
-                        Ok(count)
-                    }
-                    Err(err) => {
-                        TRACE!($read_fail {
-                            STREAM: self, WANT: buf.len(), ERR: r3::errsym(&err)
-                        });
-                        Err(err)
-                    }
-                }
-            }
-        } // impl ByteStreamBody for StreamBody
     }
 }
 

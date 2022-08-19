@@ -6,7 +6,14 @@ use crate::{Action, Disk, Link, UID, callback_to_string};
 use crate::stream::{ByteStreamBody, base};
 use r3::TRACE;
 
-DECLARE_STREAM!(ATEN_ZEROSTREAM_DROP, ATEN_ZEROSTREAM_UPPED_MISS);
+DECLARE_STREAM!(
+    ATEN_ZEROSTREAM_DROP,
+    ATEN_ZEROSTREAM_UPPED_MISS,
+    ATEN_ZEROSTREAM_REGISTER,
+    ATEN_ZEROSTREAM_READ_TRIVIAL,
+    ATEN_ZEROSTREAM_READ,
+    ATEN_ZEROSTREAM_READ_DUMP,
+    ATEN_ZEROSTREAM_READ_FAIL);
 
 #[derive(Debug)]
 struct StreamBody {
@@ -21,13 +28,6 @@ impl StreamBody {
         Ok(buf.len())
     }
 }
-
-IMPL_STREAM_BODY!(
-    ATEN_ZEROSTREAM_REGISTER,
-    ATEN_ZEROSTREAM_READ_TRIVIAL,
-    ATEN_ZEROSTREAM_READ,
-    ATEN_ZEROSTREAM_READ_DUMP,
-    ATEN_ZEROSTREAM_READ_FAIL);
 
 impl Stream {
     IMPL_STREAM!();
