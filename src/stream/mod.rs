@@ -81,16 +81,16 @@ pub trait DebuggableByteStreamBody: ByteStreamBody + std::fmt::Debug {}
 
 #[macro_export]
 macro_rules! DECLARE_STREAM {
-    ($drop:ident,
-     $up_miss:ident,
-     $register:ident,
-     $trivial:ident,
-     $read:ident,
-     $read_dump:ident,
-     $read_fail:ident) => {
+    ($ATEN_STREAM_DROP:ident,
+     $ATEN_STREAM_UPPED_MISS:ident,
+     $ATEN_STREAM_REGISTER:ident,
+     $ATEN_STREAM_READ_TRIVIAL:ident,
+     $ATEN_STREAM_READ:ident,
+     $ATEN_STREAM_READ_DUMP:ident,
+     $ATEN_STREAM_READ_FAIL:ident) => {
         impl crate::stream::ByteStreamBody for StreamBody {
             fn register(&mut self, callback: Option<crate::Action>) {
-                TRACE!($register {
+                TRACE!($ATEN_STREAM_REGISTER {
                     STREAM: self, CALLBACK: crate::callback_to_string(&callback)
                 });
                 self.base.register(callback);
@@ -98,21 +98,23 @@ macro_rules! DECLARE_STREAM {
 
             fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
                 if let Ok(_) = self.base.read(buf) {
-                    TRACE!($trivial { STREAM: self, WANT: buf.len() });
+                    TRACE!($ATEN_STREAM_READ_TRIVIAL {
+                        STREAM: self, WANT: buf.len()
+                    });
                     return Ok(0);
                 }
                 match self.read_nontrivial(buf) {
                     Ok(count) => {
-                        TRACE!($read {
+                        TRACE!($ATEN_STREAM_READ {
                             STREAM: self, WANT: buf.len(), GOT: count
                         });
-                        TRACE!($read_dump {
+                        TRACE!($ATEN_STREAM_READ_DUMP {
                             STREAM: self, DATA: r3::octets(&buf[..count])
                         });
                         Ok(count)
                     }
                     Err(err) => {
-                        TRACE!($read_fail {
+                        TRACE!($ATEN_STREAM_READ_FAIL {
                             STREAM: self, WANT: buf.len(), ERR: r3::errsym(&err)
                         });
                         Err(err)
@@ -129,7 +131,7 @@ macro_rules! DECLARE_STREAM {
 
         impl Drop for StreamBody {
             fn drop(&mut self) {
-                TRACE!($drop { STREAM: self });
+                TRACE!($ATEN_STREAM_DROP { STREAM: self });
             }
         }
 
@@ -160,7 +162,7 @@ macro_rules! DECLARE_STREAM {
                 match self.upgrade() {
                     Some(stream) => { f(&stream); }
                     None => {
-                        TRACE!($up_miss { STREAM: self });
+                        TRACE!($ATEN_STREAM_UPPED_MISS { STREAM: self });
                     }
                 };
             }
