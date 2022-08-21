@@ -53,7 +53,7 @@ impl ByteStreamBody for StreamBody {
 
 impl std::fmt::Debug for StreamBody {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("StreamBody")
+        f.debug_struct("base::StreamBody")
             .field("weak_disk", &self.weak_disk)
             .field("uid", &self.uid)
             .field("callback", &self.callback.is_some())
