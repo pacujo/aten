@@ -4,6 +4,7 @@
 extern crate lazy_static;
 
 pub mod stream;
+pub mod misc;
 
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::{BTreeMap, HashMap, LinkedList};
