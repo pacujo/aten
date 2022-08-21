@@ -142,7 +142,7 @@ macro_rules! DECLARE_STREAM {
 
         impl From<Stream> for crate::stream::ByteStream {
             fn from(stream: Stream) -> crate::stream::ByteStream {
-                stream.as_byte_stream()
+                stream.as_bytestream()
             }
         }
 
@@ -180,7 +180,7 @@ macro_rules! IMPL_STREAM {
             self.0.body.borrow().base.get_callback()
         }
 
-        pub fn as_byte_stream(&self) -> crate::stream::ByteStream {
+        pub fn as_bytestream(&self) -> crate::stream::ByteStream {
             crate::stream::ByteStream::new(self.0.uid, self.0.body.clone())
         }
 
