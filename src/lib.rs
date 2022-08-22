@@ -110,13 +110,14 @@ impl Timer {
         Some(self.clone())
     }
 
-    pub fn upped<F>(&self, f: F) where F: Fn(&Timer) {
+    pub fn upped<F>(&self, f: F) -> Option<()> where F: Fn(&Timer) {
         match self.upgrade() {
-            Some(timer) => { f(&timer); }
+            Some(timer) => Some(f(&timer)),
             None => {
                 TRACE!(ATEN_TIMER_UPPED_MISS { TIMER: self });
+                None
             }
-        };
+        }
     }
 } // impl Timer
 
@@ -745,13 +746,14 @@ impl WeakDisk {
             }))
     }
 
-    pub fn upped<F>(&self, f: F) where F: Fn(&Disk) {
+    pub fn upped<F>(&self, f: F) -> Option<()> where F: Fn(&Disk) {
         match self.upgrade() {
-            Some(disk) => { f(&disk); }
+            Some(disk) => Some(f(&disk)),
             None => {
                 TRACE!(ATEN_DISK_UPPED_MISS { DISK: self.0.uid });
+                None
             }
-        };
+        }
     }
 } // impl WeakDisk
 
@@ -907,13 +909,14 @@ impl WeakEvent {
         )
     }
 
-    pub fn upped<F>(&self, f: F) where F: Fn(&Event) {
+    pub fn upped<F>(&self, f: F) -> Option<()> where F: Fn(&Event) {
         match self.upgrade() {
-            Some(event) => { f(&event); }
+            Some(event) => Some(f(&event)),
             None => {
                 TRACE!(ATEN_EVENT_UPPED_MISS { EVENT: self.0.uid });
+                None
             }
-        };
+        }
     }
 } // impl WeakEvent
 fn nonblock(fd: RawFd) -> Result<()> {

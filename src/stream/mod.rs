@@ -66,13 +66,14 @@ impl WeakByteStream {
             }))
     }
 
-    pub fn upped<F>(&self, f: F) where F: Fn(&ByteStream) {
+    pub fn upped<F>(&self, f: F) -> Option<()> where F: Fn(&ByteStream) {
         match self.upgrade() {
-            Some(stream) => { f(&stream); }
+            Some(stream) => Some(f(&stream)),
             None => {
                 TRACE!(ATEN_BYTESTREAM_UPPED_MISS { STREAM: self });
+                None
             }
-        };
+        }
     }
 } // impl WeakByteStream
 
@@ -169,13 +170,14 @@ macro_rules! DECLARE_STREAM {
                                           }))
             }
 
-            pub fn upped<F>(&self, f: F) where F: Fn(&Stream) {
+            pub fn upped<F>(&self, f: F) -> Option<()> where F: Fn(&Stream) {
                 match self.upgrade() {
-                    Some(stream) => { f(&stream); }
+                    Some(stream) => Some(f(&stream)),
                     None => {
                         TRACE!($ATEN_STREAM_UPPED_MISS { STREAM: self });
+                        None
                     }
-                };
+                }
             }
         }
 

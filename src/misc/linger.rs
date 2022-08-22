@@ -259,13 +259,17 @@ impl WeakLinger {
             }))
     }
 
-    pub fn upped<F>(&self, f: F) where F: Fn(&Linger) {
+    pub fn upped<F>(&self, f: F) -> Option<()> where F: Fn(&Linger) {
         match self.upgrade() {
-            Some(linger) => { f(&linger); }
+            Some(linger) => {
+                f(&linger);
+                Some(())
+            }
             None => {
                 TRACE!(ATEN_LINGER_UPPED_MISS { LINGER: self.0.uid });
+                None
             }
-        };
+        }
     }
 } // impl WeakLinger
 
