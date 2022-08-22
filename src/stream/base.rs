@@ -47,6 +47,9 @@ impl ByteStreamBody for StreamBody {
     }
 
     fn register_callback(&mut self, callback: Action) {
+        self.get_weak_disk().upped(
+            |disk| { disk.execute(callback.clone()); }
+        );
         self.callback = Some(callback);
     }
 

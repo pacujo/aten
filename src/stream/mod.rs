@@ -216,21 +216,14 @@ macro_rules! IMPL_STREAM {
 
         fn register_wrappee_callback(
             &self, wrappee: &crate::stream::ByteStream) {
-            wrappee.register_callback(self.make_notifier());
-            self.0.body.borrow().base.get_weak_disk().upped(
-                |disk| { disk.execute(self.make_notifier()); }
-            );        
-        }
-
-        fn make_notifier(&self) -> crate::Action {
             let weak_stream = self.downgrade();
-            Rc::new(move || {
+            wrappee.register_callback(Rc::new(move || {
                 weak_stream.upped(|stream| {
                     if let Some(action) = stream.get_callback() {
                         (action)();
                     }
                 });
-            })
+            }));
         }
     }
 }
