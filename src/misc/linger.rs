@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::io::{Error, Result};
 use std::os::unix::io::RawFd;
 
-use crate::{Disk, WeakDisk, Link, WeakLink, UID, Action};
+use crate::{Disk, WeakDisk, Link, WeakLink, UID, Action, Registration};
 use crate::{is_again, action_to_string, callback_to_string};
 use crate::stream::ByteStream;
 use r3::TRACE;
@@ -32,6 +32,7 @@ pub struct LingerBody {
     callback: Option<Action>,
     state: State,
     self_ref: Option<Rc<RefCell<LingerBody>>>,
+    registration: Option<Registration>,
 }
 
 impl LingerBody {
@@ -49,9 +50,7 @@ impl LingerBody {
     }
 
     fn consume(&mut self) -> State{
-        self.weak_disk.upped(|disk| {
-            disk.unregister(self.dest).unwrap();
-        });
+        self.registration = None;
         self.self_ref = None;
         self.state.consume()
     }
@@ -97,6 +96,7 @@ impl Linger {
             callback: None,
             state: State::Busy,
             self_ref: None,
+            registration: None,
         };
         let self_ref = Rc::new(RefCell::new(body));
         self_ref.borrow_mut().self_ref = Some(self_ref.clone());
@@ -106,13 +106,20 @@ impl Linger {
         });
         {
             let weak_linger = linger.downgrade();
-            if let Err(err) = disk.register(dest, Rc::new(move || {
+            let jockey = Rc::new(move || {
                 weak_linger.upped(|linger| { linger.jockey(); });
-            })) {
-                TRACE!(ATEN_LINGER_CREATE_FAIL {
-                    DISK: disk, ERR: r3::errsym(&err)
-                });
-                return Err(err);
+            });
+            match disk.register(dest, jockey) {
+                Ok(registration) => {
+                    linger.0.body.borrow_mut().registration =
+                        Some(registration);
+                }
+                Err(err) => {
+                    TRACE!(ATEN_LINGER_CREATE_FAIL {
+                        DISK: disk, ERR: r3::errsym(&err)
+                    });
+                    return Err(err);
+                }
             }
         }
         TRACE!(ATEN_LINGER_CREATE { DISK: disk, LINGER: uid });
@@ -259,12 +266,9 @@ impl WeakLinger {
             }))
     }
 
-    pub fn upped<F>(&self, f: F) -> Option<()> where F: Fn(&Linger) {
+    pub fn upped<F, R>(&self, f: F) -> Option<R> where F: Fn(&Linger) -> R {
         match self.upgrade() {
-            Some(linger) => {
-                f(&linger);
-                Some(())
-            }
+            Some(linger) => Some(f(&linger)),
             None => {
                 TRACE!(ATEN_LINGER_UPPED_MISS { LINGER: self.0.uid });
                 None

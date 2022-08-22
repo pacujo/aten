@@ -66,7 +66,7 @@ impl WeakByteStream {
             }))
     }
 
-    pub fn upped<F>(&self, f: F) -> Option<()> where F: Fn(&ByteStream) {
+    pub fn upped<F, R>(&self, f: F) -> Option<R> where F: Fn(&ByteStream) -> R {
         match self.upgrade() {
             Some(stream) => Some(f(&stream)),
             None => {
@@ -170,7 +170,8 @@ macro_rules! DECLARE_STREAM {
                                           }))
             }
 
-            pub fn upped<F>(&self, f: F) -> Option<()> where F: Fn(&Stream) {
+            pub fn upped<F, R>(&self, f: F) -> Option<R>
+            where F: Fn(&Stream) -> R {
                 match self.upgrade() {
                     Some(stream) => Some(f(&stream)),
                     None => {

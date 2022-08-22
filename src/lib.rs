@@ -110,7 +110,7 @@ impl Timer {
         Some(self.clone())
     }
 
-    pub fn upped<F>(&self, f: F) -> Option<()> where F: Fn(&Timer) {
+    pub fn upped<F, R>(&self, f: F) -> Option<R> where F: Fn(&Timer) -> R {
         match self.upgrade() {
             Some(timer) => Some(f(&timer)),
             None => {
@@ -525,10 +525,12 @@ impl Disk {
         TRACE!(ATEN_DISK_LOOP { DISK: self });
         assert!(self.mut_body().wakeup_fd.is_none());
         let noop = Rc::new(move || {});
-        self.do_loop(noop.clone(), noop.clone(), noop)
+        self.do_loop(noop.clone(), noop.clone(), noop)?;
+        TRACE!(ATEN_DISK_LOOP_FINISH { DISK: self });
+        Ok(())
     }
 
-    fn prepare_protected_loop(&self) -> Result<RawFd> {
+    fn prepare_protected_loop(&self) -> Result<Registration> {
         let mut pipe_fds = vec![0 as libc::c_int; 2];
         let status = unsafe {
             libc::pipe2(pipe_fds.as_mut_ptr(), libc::O_CLOEXEC)
@@ -543,12 +545,11 @@ impl Disk {
         TRACE!(ATEN_DISK_PROTECTED_LOOP { DISK: self });
         let write_fd = pipe_fds[1] as RawFd;
         self.mut_body().wakeup_fd = Some(write_fd);
-        Ok(pipe_fds[0] as RawFd)
+        self.register(pipe_fds[0] as RawFd, Rc::new(|| {}))
     }
 
-    fn finish_protected_loop(&self, read_fd: RawFd) -> Result<()> {
+    fn finish_protected_loop(&self, registration: Registration) -> Result<()> {
         TRACE!(ATEN_DISK_PROTECTED_LOOP_FINISH { DISK: self });
-        self.unregister(read_fd)?;
         let mut body = self.mut_body();
         let wakup_fd =
             if let Some(fd) = body.wakeup_fd {
@@ -556,7 +557,7 @@ impl Disk {
             } else {
                 panic!("wakeup_fd unset")
             };
-        unsafe { libc::close(read_fd) };
+        unsafe { libc::close(registration.fd) };
         unsafe { libc::close(wakup_fd) };
         body.wakeup_fd = None;
         Ok(())
@@ -564,16 +565,16 @@ impl Disk {
 
     pub fn protected_loop(&self, lock: Action, unlock: Action) -> Result<()> {
         assert!(self.body().wakeup_fd.is_none());
-        let read_fd = self.prepare_protected_loop()?;
+        let registration = self.prepare_protected_loop()?;
         self.do_loop(
             lock,
             unlock,
-            Rc::new(move || { drain(read_fd); }))?;
-        self.finish_protected_loop(read_fd)
+            Rc::new(move || { drain(registration.fd); }))?;
+        self.finish_protected_loop(registration)
     }
 
     fn register_with_flags(&self, fd: RawFd, flags: u32, action: Action)
-                           -> Result<()> {
+                           -> Result<Registration> {
         if let Err(err) = nonblock(fd) {
             TRACE!(ATEN_DISK_REGISTER_NONBLOCK_FAIL {
                 DISK: self, FD: fd, FLAGS: r3::hex(flags as u64),
@@ -603,25 +604,29 @@ impl Disk {
         self.mut_body().registrations.insert(
             fd, self.make_event(action));
         self.wake_up();
-        Ok(())
+        Ok(Registration {
+            weak_disk: self.downgrade(),
+            fd: fd,
+        })
     }
 
-    pub fn register(&self, fd: RawFd, action: Action) -> Result<()> {
+    pub fn register(&self, fd: RawFd, action: Action) -> Result<Registration> {
         self.register_with_flags(
             fd,
             (libc::EPOLLIN | libc::EPOLLOUT | libc::EPOLLET) as u32,
             action)
     }
 
-    pub fn register_old_school(&self, fd: RawFd, action: Action) -> Result<()> {
+    pub fn register_old_school(&self, fd: RawFd, action: Action)
+                               -> Result<Registration> {
         self.register_with_flags(
             fd,
             libc::EPOLLIN as u32,
             action)
     }
 
-    pub fn modify_old_school(&self, fd: RawFd, readable: bool, writable: bool)
-                             -> Result<()> {
+    fn modify_old_school(&self, fd: RawFd, readable: bool, writable: bool)
+                         -> Result<()> {
         if !self.body().registrations.contains_key(&fd) {
             return Err(Error::from_raw_os_error(libc::EBADF))
         }
@@ -653,7 +658,7 @@ impl Disk {
         Ok(())
     }
 
-    pub fn unregister(&self, fd: RawFd) -> Result<()> {
+    fn unregister(&self, fd: RawFd) {
         if let Some(_) = self.mut_body().registrations.remove(&fd) {
         } else {
             panic!("unregistering file descriptor that has not been registered");
@@ -668,10 +673,9 @@ impl Disk {
             TRACE!(ATEN_DISK_UNREGISTER_FAIL {
                 DISK: self, FD: fd, ERR: errsym(&err)
             });
-            return Err(err);
+            panic!("unregistration failed {:?}", err);
         }
         TRACE!(ATEN_DISK_UNREGISTER { DISK: self, FD: fd });
-        Ok(())
     }
 
     pub fn flush(&self, expires: Instant) -> Result<()> {
@@ -746,7 +750,7 @@ impl WeakDisk {
             }))
     }
 
-    pub fn upped<F>(&self, f: F) -> Option<()> where F: Fn(&Disk) {
+    pub fn upped<F, R>(&self, f: F) -> Option<R> where F: Fn(&Disk) -> R {
         match self.upgrade() {
             Some(disk) => Some(f(&disk)),
             None => {
@@ -756,6 +760,33 @@ impl WeakDisk {
         }
     }
 } // impl WeakDisk
+
+pub struct Registration {
+    weak_disk: WeakDisk,
+    fd: RawFd,
+}
+
+impl Registration {
+    pub fn modify_old_school(&self, readable: bool, writable: bool)
+                             -> Option<Result<()>> {
+        self.weak_disk.upped(|disk| {
+            disk.modify_old_school(self.fd, readable, writable)
+        })
+    }
+}
+
+impl Drop for Registration {
+    fn drop(&mut self) {
+        self.weak_disk.upped(|disk| {
+            disk.unregister(self.fd);
+        }).or_else(|| {
+            TRACE!(ATEN_DISK_REGISTRATION_DROP_POSTHUMOUSLY {
+                DISK: self.weak_disk.0.uid, FD: self.fd
+            });
+            None
+        });
+    }
+}
 
 #[derive(Debug)]
 enum NextStep {
@@ -909,7 +940,7 @@ impl WeakEvent {
         )
     }
 
-    pub fn upped<F>(&self, f: F) -> Option<()> where F: Fn(&Event) {
+    pub fn upped<F, R>(&self, f: F) -> Option<R> where F: Fn(&Event) -> R {
         match self.upgrade() {
             Some(event) => Some(f(&event)),
             None => {
