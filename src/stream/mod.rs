@@ -189,7 +189,7 @@ macro_rules! DECLARE_STREAM {
 #[macro_export]
 macro_rules! IMPL_STREAM {
     () => {
-        fn get_callback(&self) -> Option<crate::Action> {
+        pub fn get_callback(&self) -> Option<crate::Action> {
             self.0.body.borrow().base.get_callback()
         }
 
@@ -216,7 +216,7 @@ macro_rules! IMPL_STREAM {
             self.0.body.borrow_mut().unregister_callback();
         }
 
-        fn register_wrappee_callback(
+        pub fn register_wrappee_callback(
             &self, wrappee: &crate::stream::ByteStream) {
             let weak_stream = self.downgrade();
             wrappee.register_callback(Rc::new(move || {
