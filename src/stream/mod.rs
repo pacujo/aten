@@ -235,6 +235,8 @@ pub mod base;
 pub mod blob;
 pub mod dry;
 pub mod empty;
+pub mod file;
+pub mod nice;
 pub mod queue;
 pub mod sub;
 pub mod zero;

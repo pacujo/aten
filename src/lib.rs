@@ -761,6 +761,7 @@ impl WeakDisk {
     }
 } // impl WeakDisk
 
+#[derive(Debug)]
 pub struct Registration {
     weak_disk: WeakDisk,
     fd: RawFd,

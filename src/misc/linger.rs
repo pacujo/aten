@@ -81,7 +81,7 @@ impl std::fmt::Debug for LingerBody {
 pub struct Linger(Link<LingerBody>);
 
 impl Linger {
-    pub fn new(disk: &Disk, source: ByteStream, dest: RawFd)
+    pub fn new(disk: &Disk, source: ByteStream, dest: RawFd, sync: bool)
                -> Result<Linger> {
         const BUF_SIZE: usize = 10000;
         let uid = UID::new();
@@ -104,7 +104,7 @@ impl Linger {
             uid: uid,
             body: self_ref,
         });
-        {
+        if !sync {
             let weak_linger = linger.downgrade();
             let jockey = Rc::new(move || {
                 weak_linger.upped(|linger| { linger.jockey(); });
@@ -122,13 +122,11 @@ impl Linger {
                 }
             }
         }
-        TRACE!(ATEN_LINGER_CREATE { DISK: disk, LINGER: uid });
-        {
-            let weak_linger = linger.downgrade();
-            disk.execute(Rc::new(move || {
-                weak_linger.upped(|linger| { linger.jockey(); });
-            }));
-        }
+        TRACE!(ATEN_LINGER_CREATE { DISK: disk, LINGER: uid, SYNC: sync });
+        let weak_linger = linger.downgrade();
+        disk.execute(Rc::new(move || {
+            weak_linger.upped(|linger| { linger.jockey(); });
+        }));
         Ok(linger)
     }
 
@@ -147,6 +145,7 @@ impl Linger {
     }
 
     pub fn unregister_callback(&self) {
+        TRACE!(ATEN_LINGER_UNREGISTER_CALLBACK { LINGER: self.0.uid });
         self.0.body.borrow_mut().callback = None;
     }
 
