@@ -4,7 +4,7 @@ use std::io::{Error, Result};
 use std::os::unix::io::RawFd;
 
 use crate::{Disk, WeakDisk, Link, WeakLink, UID, Action};
-use crate::{is_again, callback_to_string};
+use crate::{is_again, action_to_string, callback_to_string};
 use crate::stream::ByteStream;
 use r3::TRACE;
 
@@ -132,11 +132,15 @@ impl Linger {
         })
     }
 
-    pub fn register(&self, callback: Option<Action>) {
-        TRACE!(ATEN_LINGER_REGISTER {
-            LINGER: self.0.uid, CALLBACK: callback_to_string(&callback)
+    pub fn register_callback(&self, callback: Action) {
+        TRACE!(ATEN_LINGER_REGISTER_CALLBACK {
+            LINGER: self.0.uid, CALLBACK: action_to_string(&callback)
         });
-        self.0.body.borrow_mut().callback = callback;
+        self.0.body.borrow_mut().callback = Some(callback);
+    }
+
+    pub fn unregister_callback(&self) {
+        self.0.body.borrow_mut().callback = None;
     }
 
     pub fn poll(&self) -> State {

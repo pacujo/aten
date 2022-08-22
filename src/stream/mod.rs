@@ -28,8 +28,12 @@ impl ByteStream {
         self.0.body.borrow_mut().read(buf)
     }
 
-    pub fn register(&self, callback: Option<Action>) {
-        self.0.body.borrow_mut().register(callback);
+    pub fn register_callback(&self, callback: Action) {
+        self.0.body.borrow_mut().register_callback(callback);
+    }
+
+    pub fn unregister_callback(&self) {
+        self.0.body.borrow_mut().unregister_callback();
     }
 } // impl ByteStream
 
@@ -74,7 +78,8 @@ impl WeakByteStream {
 
 pub trait ByteStreamBody {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize>;
-    fn register(&mut self, callback: Option<super::Action>);
+    fn register_callback(&mut self, callback: Action);
+    fn unregister_callback(&mut self);
 }
 
 pub trait DebuggableByteStreamBody: ByteStreamBody + std::fmt::Debug {}
@@ -83,17 +88,23 @@ pub trait DebuggableByteStreamBody: ByteStreamBody + std::fmt::Debug {}
 macro_rules! DECLARE_STREAM {
     ($ATEN_STREAM_DROP:ident,
      $ATEN_STREAM_UPPED_MISS:ident,
-     $ATEN_STREAM_REGISTER:ident,
+     $ATEN_STREAM_REGISTER_CALLBACK:ident,
+     $ATEN_STREAM_UNREGISTER_CALLBACK:ident,
      $ATEN_STREAM_READ_TRIVIAL:ident,
      $ATEN_STREAM_READ:ident,
      $ATEN_STREAM_READ_DUMP:ident,
      $ATEN_STREAM_READ_FAIL:ident) => {
         impl crate::stream::ByteStreamBody for StreamBody {
-            fn register(&mut self, callback: Option<crate::Action>) {
-                TRACE!($ATEN_STREAM_REGISTER {
-                    STREAM: self, CALLBACK: crate::callback_to_string(&callback)
+            fn register_callback(&mut self, callback: crate::Action) {
+                TRACE!($ATEN_STREAM_REGISTER_CALLBACK {
+                    STREAM: self, CALLBACK: crate::action_to_string(&callback)
                 });
-                self.base.register(callback);
+                self.base.register_callback(callback);
+            }
+
+            fn unregister_callback(&mut self) {
+                TRACE!($ATEN_STREAM_UNREGISTER_CALLBACK { STREAM: self });
+                self.base.unregister_callback();
             }
 
             fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
@@ -195,13 +206,17 @@ macro_rules! IMPL_STREAM {
             self.0.body.borrow_mut().read(buf)
         }
 
-        pub fn register(&self, callback: Option<crate::Action>) {
-            self.0.body.borrow_mut().register(callback)
+        pub fn register_callback(&self, callback: crate::Action) {
+            self.0.body.borrow_mut().register_callback(callback);
+        }
+
+        pub fn unregister_callback(&self) {
+            self.0.body.borrow_mut().unregister_callback();
         }
 
         fn register_wrappee_callback(
             &self, wrappee: &crate::stream::ByteStream) {
-            wrappee.register(Some(self.make_notifier()));
+            wrappee.register_callback(self.make_notifier());
             self.0.body.borrow().base.get_weak_disk().upped(
                 |disk| { disk.execute(self.make_notifier()); }
             );        

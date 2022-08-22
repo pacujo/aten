@@ -16,7 +16,7 @@ use std::time::{Instant, Duration};
 use r3::{TRACE, TRACE_ENABLED, errsym};
 
 pub type UID = r3::UID;
-pub type Action = Rc<dyn Fn()>;
+pub type Action = Rc<dyn Fn() + 'static>;
 
 pub fn format_action(f: &mut std::fmt::Formatter, action: &Action)
                      -> std::fmt::Result {

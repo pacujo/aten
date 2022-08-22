@@ -46,8 +46,12 @@ impl ByteStreamBody for StreamBody {
         }
     }
 
-    fn register(&mut self, callback: Option<Action>) {
-        self.callback = callback;
+    fn register_callback(&mut self, callback: Action) {
+        self.callback = Some(callback);
+    }
+
+    fn unregister_callback(&mut self) {
+        self.callback = None;
     }
 } // impl ByteStreamBody for StreamBody
 
