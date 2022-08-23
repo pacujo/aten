@@ -241,6 +241,7 @@ pub mod dry;
 pub mod empty;
 pub mod file;
 pub mod nice;
+pub mod pacer;
 pub mod queue;
 pub mod sub;
 pub mod zero;
