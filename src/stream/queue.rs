@@ -24,6 +24,7 @@ pub struct StreamBody {
     base: base::StreamBody,
     queue: LinkedList<ByteStream>,
     terminated: bool,
+    exhausted: bool,
     pending_error: Option<Error>,
     notification_expected: bool,
 }
@@ -62,6 +63,7 @@ impl StreamBody {
         if cursor > 0 {
             Ok(cursor)
         } else if self.terminated {
+            self.exhausted = true;
             Ok(0)
         } else {
             Err(again())
@@ -79,6 +81,7 @@ impl Stream {
             base: base::StreamBody::new(disk.downgrade(), uid),
             queue: LinkedList::new(),
             terminated: false,
+            exhausted: false,
             pending_error: None,
             notification_expected: false,
         }));
@@ -94,4 +97,12 @@ impl Stream {
         self.0.body.borrow_mut().queue.push_back(wrappee.clone());
         self.register_wrappee_callback(&wrappee);
     }
+
+    pub fn push(&self, wrappee: ByteStream) {
+        assert!(!self.0.body.borrow().exhausted);
+        TRACE!(ATEN_QUEUESTREAM_PUSH { STREAM: self, WRAPPEE: wrappee });
+        self.0.body.borrow_mut().queue.push_front(wrappee.clone());
+        self.register_wrappee_callback(&wrappee);
+    }
+
 } // impl Stream
