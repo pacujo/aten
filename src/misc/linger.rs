@@ -173,12 +173,25 @@ impl Linger {
         }
     }
 
-    fn errsym(result: &Result<()>) -> String {
-        if let Err(err) = result {
-            r3::errsym(&err)
-        } else {
-            "".to_string()
+    pub fn abort(&self) -> State {
+        let state = self.0.body.borrow_mut().consume();
+        match &state {
+            State::Busy => {
+                TRACE!(ATEN_LINGER_ABORT_BUSY { LINGER: self.0.uid });
+            }
+            State::Stale => {
+                TRACE!(ATEN_LINGER_ABORT_STALE { LINGER: self.0.uid });
+            }
+            State::Final(Err(err)) => {
+                TRACE!(ATEN_LINGER_ABORT_FAIL {
+                    LINGER: self.0.uid, ERR: r3::errsym(&err)
+                });
+            }
+            State::Final(_) => {
+                TRACE!(ATEN_LINGER_ABORT_FINAL { LINGER: self.0.uid });
+            }
         }
+        state
     }
 
     fn jockey(&self) {
