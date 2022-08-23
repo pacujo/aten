@@ -23,7 +23,6 @@ pub struct StreamBody {
     wrappee: ByteStream,
     begin: u128,
     end: Option<u128>,
-    exhaust: bool,
     cursor: u128,
 }
 
@@ -55,16 +54,13 @@ impl StreamBody {
                     }
                 }
             }
-            if self.exhaust {
-                loop {
-                    if let Err(err) = self.wrappee.read(buf) {
-                        return Err(err);
-                    }
-                }
-            }
             Ok(0)
         } else {
-            self.wrappee.read(buf)
+            let result = self.wrappee.read(buf);
+            if let Ok(0) = result {
+                self.end = Some(self.cursor); // mark exhaustion
+            }
+            result
         }
     }
 }
@@ -75,23 +71,17 @@ impl Stream {
     pub fn new(disk: &Disk,
                wrappee: ByteStream,
                begin: u128,
-               end: Option<u128>,
-               exhaust: bool) -> Stream {
-        // If exhaust is true, an EOF is not delivered before wrappee
-        // is exhausted. Otherwise, EOF is delivered as soon as end is
-        // reached, and wrappee can be further read by outside
-        // parties.
+               end: Option<u128>) -> Stream {
         let uid = UID::new();
         TRACE!(ATEN_SUBSTREAM_CREATE {
             DISK: disk, STREAM: uid, WRAPPEE: wrappee,
-            BEGIN: begin, END: r3::option(&end), EXHAUST: exhaust
+            BEGIN: begin, END: r3::option(&end),
         });
         let body = Rc::new(RefCell::new(StreamBody {
             base: base::StreamBody::new(disk.downgrade(), uid),
             wrappee: wrappee.clone(),
             begin: begin,
             end: end,
-            exhaust: exhaust,
             cursor: 0,
         }));
         let stream = Stream(Link {
@@ -100,5 +90,15 @@ impl Stream {
         });
         stream.register_wrappee_callback(&wrappee);
         stream
+    }
+
+    pub fn remainder(&self) -> Option<ByteStream> {
+        let body = self.0.body.borrow();
+        if let Some(end) = body.end {
+            if body.cursor >= end {
+                return Some(body.wrappee.clone());
+            }
+        }
+        None
     }
 } // impl Stream
