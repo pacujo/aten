@@ -30,7 +30,13 @@ pub struct StreamBody {
 impl StreamBody {
     fn read_nontrivial(&mut self, buf: &mut [u8]) -> Result<usize> {
         if self.cursor >= self.max_burst {
-            self.back_off();
+            TRACE!(ATEN_NICESTREAM_BACK_OFF { STREAM: self });
+            self.cursor = 0;
+            if let Some(action) = self.base.get_callback() {
+                self.base.get_weak_disk().upped(|disk| {
+                    disk.execute(action.clone());
+                });
+            }
             return Err(again());
         }
         match self.wrappee.read(buf) {
@@ -44,33 +50,12 @@ impl StreamBody {
             }
         }
     }
-
-    fn back_off(&mut self) {
-        TRACE!(ATEN_NICESTREAM_BACK_OFF { STREAM: self });
-        self.cursor = 0;
-        self.base.get_weak_disk().upped(
-            |disk| {
-                let weak_self = self.weak_self.clone();
-                disk.execute(Rc::new(move || {
-                    weak_self.upgrade().map(|cell| {
-                        cell.borrow().retry();
-                    });
-                }));
-        });
-    }
-
-    fn retry(&self) {
-        TRACE!(ATEN_NICESTREAM_RETRY { STREAM: self });
-        if let Some(action) = self.base.get_callback() {
-            (action)();
-        }
-    }
 }
 
 impl Stream {
     IMPL_STREAM!();
 
-    pub fn new(disk: &Disk, wrappee: &ByteStream, max_burst: usize) -> Stream {
+    pub fn new(disk: &Disk, wrappee: ByteStream, max_burst: usize) -> Stream {
         let uid = UID::new();
         TRACE!(ATEN_NICESTREAM_CREATE {
             DISK: disk, STREAM: uid, WRAPPEE: wrappee, MAX_BURST: max_burst,
@@ -87,7 +72,7 @@ impl Stream {
             uid: uid,
             body: body.clone(),
         });
-        stream.register_wrappee_callback(wrappee);
+        stream.register_wrappee_callback(&wrappee);
         stream
     }
 } // impl Stream
