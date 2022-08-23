@@ -88,10 +88,10 @@ impl Stream {
         })
     }
 
-    pub fn enqueue(&self, wrappee: &ByteStream) {
+    pub fn enqueue(&self, wrappee: ByteStream) {
         assert!(!self.0.body.borrow().terminated);
         TRACE!(ATEN_QUEUESTREAM_ENQUEUE { STREAM: self, WRAPPEE: wrappee });
         self.0.body.borrow_mut().queue.push_back(wrappee.clone());
-        self.register_wrappee_callback(wrappee);
+        self.register_wrappee_callback(&wrappee);
     }
 } // impl Stream

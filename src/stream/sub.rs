@@ -73,7 +73,7 @@ impl Stream {
     IMPL_STREAM!();
 
     pub fn new(disk: &Disk,
-               wrappee: &ByteStream,
+               wrappee: ByteStream,
                begin: u128,
                end: Option<u128>,
                exhaust: bool) -> Stream {
@@ -98,7 +98,7 @@ impl Stream {
             uid: uid,
             body: body.clone(),
         });
-        stream.register_wrappee_callback(wrappee);
+        stream.register_wrappee_callback(&wrappee);
         stream
     }
 } // impl Stream
