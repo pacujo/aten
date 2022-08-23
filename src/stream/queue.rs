@@ -6,7 +6,7 @@ use std::io::{Result, Error};
 use crate::{Disk, Link, UID};
 use crate::{again, is_again};
 use crate::stream::{ByteStream, ByteStreamBody, base};
-use r3::TRACE;
+use r3::{TRACE, Traceable};
 
 DECLARE_STREAM!(
     ATEN_QUEUESTREAM_DROP,
@@ -16,6 +16,7 @@ DECLARE_STREAM!(
     ATEN_QUEUESTREAM_READ_TRIVIAL,
     ATEN_QUEUESTREAM_READ,
     ATEN_QUEUESTREAM_READ_DUMP,
+    ATEN_QUEUESTREAM_READ_TEXT,
     ATEN_QUEUESTREAM_READ_FAIL);
 
 #[derive(Debug)]

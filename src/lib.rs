@@ -13,7 +13,7 @@ use std::option::Option;
 use std::os::unix::io::RawFd;
 use std::rc::{Rc, Weak};
 use std::time::{Instant, Duration};
-use r3::{TRACE, TRACE_ENABLED, errsym};
+use r3::{TRACE, TRACE_ENABLED, Traceable, errsym};
 
 pub type UID = r3::UID;
 pub type Action = Rc<dyn Fn() + 'static>;

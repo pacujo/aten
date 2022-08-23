@@ -5,7 +5,7 @@ use std::os::unix::io::RawFd;
 
 use crate::{Disk, Link, UID, Registration};
 use crate::stream::{ByteStreamBody, base};
-use r3::TRACE;
+use r3::{TRACE, Traceable};
 
 DECLARE_STREAM!(
     ATEN_FILESTREAM_DROP,
@@ -15,6 +15,7 @@ DECLARE_STREAM!(
     ATEN_FILESTREAM_READ_TRIVIAL,
     ATEN_FILESTREAM_READ,
     ATEN_FILESTREAM_READ_DUMP,
+    ATEN_FILESTREAM_READ_TEXT,
     ATEN_FILESTREAM_READ_FAIL);
 
 #[derive(Debug)]

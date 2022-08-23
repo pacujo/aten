@@ -4,7 +4,7 @@ use std::io::Result;
 
 use crate::{Disk, Link, UID};
 use crate::stream::{ByteStreamBody, base};
-use r3::TRACE;
+use r3::{TRACE, Traceable};
 
 DECLARE_STREAM!(
     ATEN_BLOBSTREAM_DROP,
@@ -14,6 +14,7 @@ DECLARE_STREAM!(
     ATEN_BLOBSTREAM_READ_TRIVIAL,
     ATEN_BLOBSTREAM_READ,
     ATEN_BLOBSTREAM_READ_DUMP,
+    ATEN_BLOBSTREAM_READ_TEXT,
     ATEN_BLOBSTREAM_READ_FAIL);
 
 #[derive(Debug)]
@@ -43,7 +44,10 @@ impl Stream {
             DISK: disk, STREAM: uid, BLOB_LEN: blob.len()
         });
         TRACE!(ATEN_BLOBSTREAM_CREATE_DUMP {
-            STREAM: uid, BLOB: r3::octets(&blob)
+            STREAM: uid, DATA: r3::octets(&blob)
+        });
+        TRACE!(ATEN_BLOBSTREAM_CREATE_TEXT {
+            STREAM: uid, TEXT: r3::text(&blob)
         });
         let body = StreamBody {
             base: base::StreamBody::new(disk.downgrade(), uid),

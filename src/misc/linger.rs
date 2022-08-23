@@ -6,7 +6,7 @@ use std::os::unix::io::RawFd;
 use crate::{Disk, WeakDisk, Link, WeakLink, UID, Action, Registration};
 use crate::{is_again, action_to_string, callback_to_string};
 use crate::stream::ByteStream;
-use r3::TRACE;
+use r3::{TRACE, Traceable};
 
 #[derive(Debug)]
 pub enum State {
@@ -212,6 +212,10 @@ impl Linger {
                 TRACE!(ATEN_LINGER_JOCKEY_WRITE_DUMP {
                     LINGER: self.0.uid,
                     DATA: r3::octets(&slice[..count as usize]),
+                });
+                TRACE!(ATEN_LINGER_JOCKEY_WRITE_TEXT {
+                    LINGER: self.0.uid,
+                    TEXT: r3::text(&slice[..count as usize]),
                 });
                 assert!(count > 0);
                 body.cursor += count as usize;

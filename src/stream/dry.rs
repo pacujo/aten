@@ -4,7 +4,7 @@ use std::io::{Result, Error};
 
 use crate::{Disk, Link, UID};
 use crate::stream::{ByteStreamBody, base};
-use r3::TRACE;
+use r3::{TRACE, Traceable};
 
 DECLARE_STREAM!(
     ATEN_DRYSTREAM_DROP,
@@ -14,6 +14,7 @@ DECLARE_STREAM!(
     ATEN_DRYSTREAM_READ_TRIVIAL,
     ATEN_DRYSTREAM_READ,
     ATEN_DRYSTREAM_READ_DUMP,
+    ATEN_DRYSTREAM_READ_TEXT,
     ATEN_DRYSTREAM_READ_FAIL);
 
 #[derive(Debug)]

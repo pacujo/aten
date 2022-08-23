@@ -5,7 +5,7 @@ use std::io::Result;
 use std::rc::Rc;
 
 use crate::{Action, Link, UID, WeakLink};
-use r3::TRACE;
+use r3::{TRACE, Traceable};
 
 pub struct ByteStream(Link<dyn ByteStreamBody>);
 
@@ -94,6 +94,7 @@ macro_rules! DECLARE_STREAM {
      $ATEN_STREAM_READ_TRIVIAL:ident,
      $ATEN_STREAM_READ:ident,
      $ATEN_STREAM_READ_DUMP:ident,
+     $ATEN_STREAM_READ_TEXT:ident,
      $ATEN_STREAM_READ_FAIL:ident) => {
         impl crate::stream::ByteStreamBody for StreamBody {
             fn register_callback(&mut self, callback: crate::Action) {
@@ -122,6 +123,9 @@ macro_rules! DECLARE_STREAM {
                         });
                         TRACE!($ATEN_STREAM_READ_DUMP {
                             STREAM: self, DATA: r3::octets(&buf[..count])
+                        });
+                        TRACE!($ATEN_STREAM_READ_TEXT {
+                            STREAM: self, TEXT: r3::text(&buf[..count])
                         });
                         Ok(count)
                     }
