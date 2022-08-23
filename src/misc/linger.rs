@@ -88,7 +88,7 @@ impl Linger {
         let body = LingerBody {
             weak_disk: disk.downgrade(),
             uid: uid,
-            source: source,
+            source: source.clone(),
             dest: dest,
             buf: vec![0; BUF_SIZE],
             cursor: 0,
@@ -124,7 +124,7 @@ impl Linger {
         }
         TRACE!(ATEN_LINGER_CREATE { DISK: disk, LINGER: uid, SYNC: sync });
         let weak_linger = linger.downgrade();
-        disk.execute(Rc::new(move || {
+        source.register_callback(Rc::new(move || {
             weak_linger.upped(|linger| { linger.jockey(); });
         }));
         Ok(linger)
