@@ -3,8 +3,7 @@ use std::cell::RefCell;
 use std::collections::LinkedList;
 use std::io::{Result, Error};
 
-use crate::{Disk, Link, UID};
-use crate::{again, is_again};
+use crate::{Disk, Link, UID, error};
 use crate::stream::{ByteStream, ByteStreamBody, base};
 use r3::{TRACE, Traceable};
 
@@ -42,12 +41,12 @@ impl StreamBody {
             match head.read(&mut buf[cursor..]) {
                 Err(err) => {
                     if cursor == 0 {
-                        if is_again(&err) {
+                        if error::is_again(&err) {
                             self.notification_expected = true;
                         }
                         return Err(err);
                     }
-                    if !is_again(&err) {
+                    if !error::is_again(&err) {
                         self.pending_error = Some(err);
                     }
                     break;
@@ -66,7 +65,7 @@ impl StreamBody {
             self.exhausted = true;
             Ok(0)
         } else {
-            Err(again())
+            Err(error::again())
         }
     }
 }

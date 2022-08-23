@@ -4,7 +4,7 @@ use std::io::{Error, Result};
 use std::os::unix::io::RawFd;
 
 use crate::{Disk, WeakDisk, Link, WeakLink, UID, Action, Registration};
-use crate::{is_again, action_to_string, callback_to_string};
+use crate::{error, action_to_string, callback_to_string};
 use crate::stream::ByteStream;
 use r3::{TRACE, Traceable};
 
@@ -214,7 +214,7 @@ impl Linger {
                         LINGER: self.0.uid, WANT: slice.len(),
                         ERR: r3::errsym(&err),
                     });
-                    if !is_again(&err) {
+                    if !error::is_again(&err) {
                         body.done(Err(err));
                     }
                     return;
@@ -250,7 +250,7 @@ impl Linger {
                     TRACE!(ATEN_LINGER_JOCKEY_REPLENISH_FAIL {
                         LINGER: self.0.uid, ERR: r3::errsym(&err),
                     });
-                    if is_again(&err) {
+                    if error::is_again(&err) {
                         body.cursor = body.length;
                     } else {
                         body.done(Err(err));

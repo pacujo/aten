@@ -3,7 +3,7 @@ use std::cell::RefCell;
 //use std::io::{Result, Error};
 use std::io::Result;
 
-use crate::{Disk, Link, UID, again};
+use crate::{Disk, Link, UID, error};
 use crate::stream::{ByteStream, ByteStreamBody, base};
 use r3::{TRACE, Traceable};
 
@@ -37,7 +37,7 @@ impl StreamBody {
                     disk.execute(action.clone());
                 });
             }
-            return Err(again());
+            return Err(error::again());
         }
         match self.wrappee.read(buf) {
             Ok(n) => {

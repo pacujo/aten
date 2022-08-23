@@ -628,7 +628,7 @@ impl Disk {
     fn modify_old_school(&self, fd: RawFd, readable: bool, writable: bool)
                          -> Result<()> {
         if !self.body().registrations.contains_key(&fd) {
-            return Err(badf())
+            return Err(error::badf())
         }
         let mut epoll_event = libc::epoll_event {
 	    events: 0,
@@ -993,25 +993,7 @@ fn epoll_wait(fd: RawFd, epoll_events: &mut Vec<libc::epoll_event>,
     }
 }
 
-pub fn badf() -> Error {
-    Error::from_raw_os_error(libc::EBADF)
-}
-
-pub fn again() -> Error {
-    Error::from_raw_os_error(libc::EAGAIN)
-}
-
-pub fn inval() -> Error {
-    Error::from_raw_os_error(libc::EINVAL)
-}
-
-pub fn is_again(err: &Error) -> bool {
-    if let Some(errno) = err.raw_os_error() {
-        errno == libc::EAGAIN
-    } else {
-        false
-    }
-}
+pub mod error;
 
 #[macro_export]
 macro_rules! DISPLAY_LINK_UID {

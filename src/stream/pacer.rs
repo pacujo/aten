@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::io::Result;
 use std::time::{Instant, Duration};
 
-use crate::{Disk, Link, UID, Timer, again, badf, inval};
+use crate::{Disk, Link, UID, Timer, error};
 use crate::stream::{ByteStream, ByteStreamBody, base};
 use r3::{TRACE, Traceable};
 
@@ -37,7 +37,7 @@ impl StreamBody {
         let disk =
             match self.base.get_weak_disk().upgrade() {
                 Some(disk) => disk,
-                None => { return Err(badf()); }
+                None => { return Err(error::badf()); }
             };
 
         let now = disk.now();
@@ -59,7 +59,7 @@ impl StreamBody {
                         body.borrow().retry();
                     };
                 })));
-            return Err(again());
+            return Err(error::again());
         }
         self.retry_timer = None;
         let count = std::cmp::min(buf.len(), self.quota as usize);
@@ -95,7 +95,7 @@ impl Stream {
                min_burst: usize,
                max_burst: usize) -> Result<Stream> {
         if byterate <= 0.0 || min_burst < 1 || max_burst < min_burst {
-            return Err(inval())
+            return Err(error::inval())
         }
         let uid = UID::new();
         TRACE!(ATEN_PACERSTREAM_CREATE {

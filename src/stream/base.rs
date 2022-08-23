@@ -1,6 +1,6 @@
 use std::io::Result;
 
-use crate::{WeakDisk, UID, Action, again};
+use crate::{WeakDisk, UID, Action, error};
 use crate::stream::{ByteStreamBody};
 
 pub struct StreamBody {
@@ -42,7 +42,7 @@ impl ByteStreamBody for StreamBody {
         if buf.len() == 0 {
             Ok(0)
         } else {
-            Err(again())
+            Err(error::again())
         }
     }
 

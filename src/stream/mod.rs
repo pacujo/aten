@@ -240,6 +240,7 @@ pub mod blob;
 pub mod dry;
 pub mod empty;
 pub mod file;
+pub mod naivedecoder;
 pub mod nice;
 pub mod pacer;
 pub mod queue;
