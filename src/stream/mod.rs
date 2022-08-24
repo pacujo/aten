@@ -96,6 +96,39 @@ macro_rules! DECLARE_STREAM {
      $ATEN_STREAM_READ_DUMP:ident,
      $ATEN_STREAM_READ_TEXT:ident,
      $ATEN_STREAM_READ_FAIL:ident) => {
+        DECLARE_STREAM_DROP!($ATEN_STREAM_DROP);
+        DECLARE_STREAM_NO_DROP!($ATEN_STREAM_UPPED_MISS,
+                                $ATEN_STREAM_REGISTER_CALLBACK,
+                                $ATEN_STREAM_UNREGISTER_CALLBACK,
+                                $ATEN_STREAM_READ_TRIVIAL,
+                                $ATEN_STREAM_READ,
+                                $ATEN_STREAM_READ_DUMP,
+                                $ATEN_STREAM_READ_TEXT,
+                                $ATEN_STREAM_READ_FAIL);
+    }
+}
+
+#[macro_export]
+macro_rules! DECLARE_STREAM_DROP {
+    ($ATEN_STREAM_DROP:ident) => {
+        impl Drop for StreamBody {
+            fn drop(&mut self) {
+                TRACE!($ATEN_STREAM_DROP { STREAM: self });
+            }
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! DECLARE_STREAM_NO_DROP {
+    ($ATEN_STREAM_UPPED_MISS:ident,
+     $ATEN_STREAM_REGISTER_CALLBACK:ident,
+     $ATEN_STREAM_UNREGISTER_CALLBACK:ident,
+     $ATEN_STREAM_READ_TRIVIAL:ident,
+     $ATEN_STREAM_READ:ident,
+     $ATEN_STREAM_READ_DUMP:ident,
+     $ATEN_STREAM_READ_TEXT:ident,
+     $ATEN_STREAM_READ_FAIL:ident) => {
         impl crate::stream::ByteStreamBody for StreamBody {
             fn register_callback(&mut self, callback: crate::Action) {
                 TRACE!($ATEN_STREAM_REGISTER_CALLBACK {
@@ -142,12 +175,6 @@ macro_rules! DECLARE_STREAM {
         impl std::fmt::Display for StreamBody {
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 write!(f, "{}", self.base)
-            }
-        }
-
-        impl Drop for StreamBody {
-            fn drop(&mut self) {
-                TRACE!($ATEN_STREAM_DROP { STREAM: self });
             }
         }
 
@@ -240,6 +267,7 @@ pub mod base;
 pub mod blob;
 pub mod dry;
 pub mod empty;
+pub mod farewell;
 pub mod file;
 pub mod naivedecoder;
 pub mod naiveencoder;

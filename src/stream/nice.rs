@@ -1,4 +1,4 @@
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 use std::cell::RefCell;
 use std::io::Result;
 
@@ -23,7 +23,6 @@ pub struct StreamBody {
     wrappee: ByteStream,
     max_burst: usize,
     cursor: usize,
-    weak_self: Weak<RefCell<Self>>,
 }
 
 impl StreamBody {
@@ -59,14 +58,12 @@ impl Stream {
         TRACE!(ATEN_NICESTREAM_CREATE {
             DISK: disk, STREAM: uid, WRAPPEE: wrappee, MAX_BURST: max_burst,
         });
-        let body = Rc::new_cyclic(
-            |weak_self| RefCell::new(StreamBody {
-                base: base::StreamBody::new(disk.downgrade(), uid),
-                wrappee: wrappee.clone(),
-                max_burst: max_burst,
-                cursor: 0,
-                weak_self: weak_self.clone(),
-            }));
+        let body = Rc::new(RefCell::new(StreamBody {
+            base: base::StreamBody::new(disk.downgrade(), uid),
+            wrappee: wrappee.clone(),
+            max_burst: max_burst,
+            cursor: 0,
+        }));
         let stream = Stream(Link {
             uid: uid,
             body: body.clone(),
