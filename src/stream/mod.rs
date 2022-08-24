@@ -274,4 +274,5 @@ pub mod pacer;
 pub mod queue;
 pub mod reservoir;
 pub mod sub;
+pub mod switch;
 pub mod zero;
