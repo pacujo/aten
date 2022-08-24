@@ -39,7 +39,7 @@ impl StreamBody {
         assert!(count >= 1);
         let mut ri = 0;
         let mut wi = 0;
-        if let State::Escaped = self.state {
+        if matches!(self.state, State::Escaped) {
             buf[wi] = buf[ri];
             wi += 1;
             ri += 1;

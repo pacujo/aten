@@ -57,7 +57,7 @@ impl StreamBody {
             Ok(0)
         } else {
             let result = self.wrappee.read(buf);
-            if let Ok(0) = result {
+            if matches!(result, Ok(0)) {
                 self.end = Some(self.cursor); // mark exhaustion
             }
             result

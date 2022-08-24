@@ -42,7 +42,7 @@ pub struct StreamBody {
 impl StreamBody {
     fn encode(&mut self, buf: &mut [u8]) -> Result<usize> {
         let mut wi = 0;
-        if let State::Escaped = self.state {
+        if matches!(self.state, State::Escaped) {
             assert!(self.low < self.high);
             buf[wi] = self.buffer[self.low];
             wi += 1;
