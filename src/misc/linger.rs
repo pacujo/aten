@@ -11,6 +11,7 @@ use r3::{TRACE, Traceable};
 #[derive(Debug)]
 pub enum State {
     Busy,
+    Drifting,
     Final(Result<()>),
     Stale,                      // Final result claimed previously
 }
@@ -42,17 +43,40 @@ impl LingerBody {
 
     fn done(&mut self, result: Result<()>) {
         TRACE!(ATEN_LINGER_JOCKEY_DONE { LINGER: self.uid });
-        self.state = State::Final(result);
-        if let Some(action) = self.callback.clone() {
-            let weak_disk = &self.weak_disk;
-            weak_disk.upped(|disk| { disk.execute(action.clone()); });
+        if matches!(self.state, State::Drifting) {
+            self.consume();
+        } else {
+            self.state = State::Final(result);
+            if let Some(action) = self.callback.clone() {
+                let weak_disk = &self.weak_disk;
+                weak_disk.upped(|disk| { disk.execute(action.clone()); });
+            }
         }
     }
 
-    fn consume(&mut self) -> State{
+    fn consume(&mut self) -> State {
         self.registration = None;
         self.self_ref = None;
         self.state.consume()
+    }
+
+    fn drift(&mut self) {
+        match self.state {
+            State::Busy => {
+                TRACE!(ATEN_LINGER_DRIFT_BUSY { LINGER: self.uid });
+                self.state = State::Drifting;
+            }
+            State::Drifting => {
+                TRACE!(ATEN_LINGER_DRIFT_DRIFTING { LINGER: self.uid });
+            }
+            State::Stale => {
+                TRACE!(ATEN_LINGER_DRIFT_STALE { LINGER: self.uid });
+            }
+            State::Final(_) => {
+                TRACE!(ATEN_LINGER_DRIFT_FINAL { LINGER: self.uid });
+                self.consume();
+            }
+        }
     }
 } // impl LingerBody
 
@@ -156,6 +180,10 @@ impl Linger {
                 TRACE!(ATEN_LINGER_POLL_BUSY { LINGER: self.0.uid });
                 State::Busy
             }
+            State::Drifting => {
+                TRACE!(ATEN_LINGER_POLL_DRIFTING { LINGER: self.0.uid });
+                State::Drifting
+            }
             State::Stale => {
                 TRACE!(ATEN_LINGER_POLL_STALE { LINGER: self.0.uid });
                 State::Stale
@@ -179,6 +207,9 @@ impl Linger {
             State::Busy => {
                 TRACE!(ATEN_LINGER_ABORT_BUSY { LINGER: self.0.uid });
             }
+            State::Drifting => {
+                TRACE!(ATEN_LINGER_ABORT_DRIFTING { LINGER: self.0.uid });
+            }
             State::Stale => {
                 TRACE!(ATEN_LINGER_ABORT_STALE { LINGER: self.0.uid });
             }
@@ -194,8 +225,12 @@ impl Linger {
         state
     }
 
+    pub fn drift(&self) {
+        self.0.body.borrow_mut().drift();
+    }
+
     fn jockey(&self) {
-        if self.is_done() {
+        if !matches!(self.0.body.borrow().state, State::Busy) {
             TRACE!(ATEN_LINGER_JOCKEY_SPURIOUS { LINGER: self.0.uid });
             return;
         }
@@ -261,12 +296,14 @@ impl Linger {
         }
     }
 
-    fn is_done(&self) -> bool {
-        if let State::Busy = self.0.body.borrow().state {
-            false
-        } else {
-            true
-        }
+    pub fn prod(&self) {
+        let weak_linger = self.downgrade();
+        let jockey = Rc::new(move || {
+            weak_linger.upped(|linger| { linger.jockey(); });
+        });
+        self.0.body.borrow().weak_disk.upped(|disk| {
+            disk.execute(jockey.clone());
+        });
     }
 } // impl Linger
 
