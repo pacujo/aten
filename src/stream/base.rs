@@ -32,8 +32,12 @@ impl StreamBody {
         self.uid
     }
 
-    pub fn get_callback(&self) -> Option<Action> {
-        self.callback.clone()
+    pub fn invoke_callback(&self) {
+        if let Some(action) = self.callback.clone() {
+            self.weak_disk.upped(|disk| {
+                disk.execute(action.clone());
+            });
+        }
     }
 } // impl StreamBody
 

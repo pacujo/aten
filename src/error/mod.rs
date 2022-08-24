@@ -16,6 +16,10 @@ pub fn proto() -> Error {
     Error::from_raw_os_error(libc::EPROTO)
 }
 
+pub fn nospc() -> Error {
+    Error::from_raw_os_error(libc::EPROTO)
+}
+
 pub fn is_again(err: &Error) -> bool {
     if let Some(errno) = err.raw_os_error() {
         errno == libc::EAGAIN

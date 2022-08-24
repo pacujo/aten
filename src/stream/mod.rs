@@ -221,8 +221,8 @@ macro_rules! DECLARE_STREAM_NO_DROP {
 #[macro_export]
 macro_rules! IMPL_STREAM {
     () => {
-        pub fn get_callback(&self) -> Option<crate::Action> {
-            self.0.body.borrow().base.get_callback()
+        pub fn invoke_callback(&self) {
+            self.0.body.borrow().base.invoke_callback();
         }
 
         pub fn as_bytestream(&self) -> crate::stream::ByteStream {
@@ -253,9 +253,7 @@ macro_rules! IMPL_STREAM {
             let weak_stream = self.downgrade();
             wrappee.register_callback(Rc::new(move || {
                 weak_stream.upped(|stream| {
-                    if let Some(action) = stream.get_callback() {
-                        (action)();
-                    }
+                    stream.invoke_callback();
                 });
             }));
         }
@@ -274,5 +272,6 @@ pub mod naiveencoder;
 pub mod nice;
 pub mod pacer;
 pub mod queue;
+pub mod reservoir;
 pub mod sub;
 pub mod zero;

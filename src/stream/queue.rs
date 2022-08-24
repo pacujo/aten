@@ -104,4 +104,9 @@ impl Stream {
         self.register_wrappee_callback(&wrappee);
     }
 
+    pub fn terminate(&self) {
+        assert!(!self.0.body.borrow().terminated);
+        self.0.body.borrow_mut().terminated = true;        
+        self.invoke_callback();
+    }
 } // impl Stream

@@ -75,8 +75,6 @@ impl Stream {
     }
 
     fn notify(&self) {
-        if let Some(action) = self.get_callback() {
-            (action)();
-        }
+        self.0.body.borrow().base.invoke_callback();
     }
 } // impl Stream

@@ -30,11 +30,7 @@ impl StreamBody {
         if self.cursor >= self.max_burst {
             TRACE!(ATEN_NICESTREAM_BACK_OFF { STREAM: self });
             self.cursor = 0;
-            if let Some(action) = self.base.get_callback() {
-                self.base.get_weak_disk().upped(|disk| {
-                    disk.execute(action.clone());
-                });
-            }
+            self.base.invoke_callback();
             return Err(error::again());
         }
         match self.wrappee.read(buf) {

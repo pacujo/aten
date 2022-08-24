@@ -78,11 +78,7 @@ impl StreamBody {
 
     fn retry(&self) {
         TRACE!(ATEN_PACERSTREAM_RETRY { STREAM: self });
-        if let Some(action) = self.base.get_callback() {
-            self.base.get_weak_disk().upped(|disk| {
-                disk.execute(action.clone());
-            });
-        }
+        self.base.invoke_callback();
     }
 }
 
