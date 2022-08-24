@@ -235,6 +235,7 @@ macro_rules! IMPL_STREAM {
     }
 }
 
+pub mod avid;
 pub mod base;
 pub mod blob;
 pub mod dry;
