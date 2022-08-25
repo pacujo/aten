@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::io::Result;
 
-use crate::{Disk, WeakDisk, Link, WeakLink, UID, Registration, Fd};
+use crate::{Disk, WeakDisk, Link, WeakLink, UID, Action, Registration, Fd};
 use crate::stream::{ByteStream, switch, file, dry, empty};
 use crate::misc::{Linger};
 use r3::{TRACE, Traceable};
@@ -73,7 +73,7 @@ impl Duplex {
             body: Rc::new(RefCell::new(body)),
         });
         let weak_duplex = duplex.downgrade();
-        let notify = Rc::new(move || {
+        let notify = Action::new(move || {
             weak_duplex.upped(|duplex| { duplex.notify(); });
         });
         match disk.register(fd, notify) {

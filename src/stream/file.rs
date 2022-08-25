@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::io::{Result, Error};
 use std::os::unix::io::AsRawFd;
 
-use crate::{Disk, Link, UID, Registration, Fd};
+use crate::{Disk, Link, Action, UID, Registration, Fd};
 use crate::stream::{ByteStreamBody, base};
 use r3::{TRACE, Traceable};
 
@@ -55,7 +55,7 @@ impl Stream {
         });
         if !sync {
             let weak_stream = stream.downgrade();
-            let notify = Rc::new(move || {
+            let notify = Action::new(move || {
                 weak_stream.upped(|stream| { stream.notify(); });
             });
             match disk.register(fd, notify) {

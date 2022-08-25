@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::io::Result;
 
-use crate::{Disk, Link, UID, Action, action_to_string};
+use crate::{Disk, Link, UID, Action};
 use crate::stream::{ByteStream, ByteStreamBody, base};
 use r3::{TRACE, Traceable};
 
@@ -16,21 +16,12 @@ DECLARE_STREAM_NO_DROP!(
     ATEN_FAREWELLSTREAM_READ_TEXT,
     ATEN_FAREWELLSTREAM_READ_FAIL);
 
+#[derive(Debug)]
 pub struct StreamBody {
     base: base::StreamBody,
     wrappee: ByteStream,
     farewell_callback: Option<Action>,
 }
-
-impl std::fmt::Debug for StreamBody {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("farewell::StreamBody")
-            .field("base", &self.base)
-            .field("wrappee", &self.wrappee)
-            .field("farewell_callback", &self.farewell_callback.is_some())
-            .finish()
-    }
-} // impl Debug for StreamBody 
 
 impl StreamBody {
     fn read_nontrivial(&mut self, buf: &mut [u8]) -> Result<usize> {
@@ -72,7 +63,7 @@ impl Stream {
 
     pub fn register_farewell_callback(&self, callback: Action) {
         TRACE!(ATEN_FAREWELLSTREAM_REGISTER_FAREWELL_CALLBACK {
-            STREAM: self, FAREWELL_CALLBACK: action_to_string(&callback)
+            STREAM: self, FAREWELL_CALLBACK: &callback
         });
         self.0.body.borrow_mut().farewell_callback = Some(callback);
     }

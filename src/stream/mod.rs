@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::io::Result;
 use std::rc::Rc;
 
-use crate::{Action, Link, UID, WeakLink};
+use crate::{Link, WeakLink, UID};
 use r3::{TRACE, Traceable};
 
 pub struct ByteStream(Link<dyn ByteStreamBody>);
@@ -28,7 +28,7 @@ impl ByteStream {
         self.0.body.borrow_mut().read(buf)
     }
 
-    pub fn register_callback(&self, callback: Action) {
+    pub fn register_callback(&self, callback: crate::Action) {
         self.0.body.borrow_mut().register_callback(callback);
     }
 
@@ -79,7 +79,7 @@ impl WeakByteStream {
 
 pub trait ByteStreamBody {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize>;
-    fn register_callback(&mut self, callback: Action);
+    fn register_callback(&mut self, callback: crate::Action);
     fn unregister_callback(&mut self);
 }
 
@@ -132,7 +132,7 @@ macro_rules! DECLARE_STREAM_NO_DROP {
         impl crate::stream::ByteStreamBody for StreamBody {
             fn register_callback(&mut self, callback: crate::Action) {
                 TRACE!($ATEN_STREAM_REGISTER_CALLBACK {
-                    STREAM: self, CALLBACK: crate::action_to_string(&callback)
+                    STREAM: self, CALLBACK: &callback
                 });
                 self.base.register_callback(callback);
             }
@@ -251,7 +251,7 @@ macro_rules! IMPL_STREAM {
         pub fn register_wrappee_callback(
             &self, wrappee: &crate::stream::ByteStream) {
             let weak_stream = self.downgrade();
-            wrappee.register_callback(Rc::new(move || {
+            wrappee.register_callback(crate::Action::new(move || {
                 weak_stream.upped(|stream| {
                     stream.invoke_callback();
                 });

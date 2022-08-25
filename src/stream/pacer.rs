@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::io::Result;
 use std::time::{Instant, Duration};
 
-use crate::{Disk, Link, UID, Timer, error};
+use crate::{Disk, Link, Action, UID, Timer, error};
 use crate::stream::{ByteStream, ByteStreamBody, base};
 use r3::{TRACE, Traceable};
 
@@ -54,7 +54,7 @@ impl StreamBody {
             let weak_self = self.weak_self.clone();
             self.retry_timer = Some(disk.schedule(
                 now + Duration::from_secs_f64(delay),
-                Rc::new(move || {
+                Action::new(move || {
                     if let Some(body) = weak_self.upgrade() {
                         body.borrow().retry();
                     };

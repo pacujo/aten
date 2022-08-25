@@ -16,7 +16,42 @@ use std::time::{Instant, Duration};
 use r3::{TRACE, TRACE_ENABLED, Traceable, errsym};
 
 pub type UID = r3::UID;
-pub type Action = Rc<dyn Fn() + 'static>;
+
+struct ActionBody(Box<dyn Fn() + 'static>);
+
+pub struct Action(Rc<ActionBody>);
+
+impl Action {
+    pub fn new<F>(f: F) -> Action where F: Fn() + 'static {
+        Action(Rc::new(ActionBody(Box::new(f))))
+    }
+
+    pub fn noop() -> Action {
+        Action::new(move || {})
+    }
+
+    pub fn perform(&self) {
+        (self.0.0)();
+    }
+} // impl Action
+
+impl ToString for Action {
+    fn to_string(&self) -> String {
+        format!("{:p}", self.0.0)
+    }
+} // impl ToString for Action
+
+impl Clone for Action {
+    fn clone(&self) -> Action {
+        Action(Rc::clone(&self.0))
+    }
+} // impl Clone for Action
+
+impl std::fmt::Debug for Action {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:p}", self.0.0)
+    }
+} // impl std::fmt::Debug for Action
 
 #[derive(Debug)]
 struct FdBody(RawFd);
@@ -32,7 +67,7 @@ impl Drop for FdBody {
 pub struct Fd(Rc<FdBody>);
 
 impl Fd {
-    pub fn new<R: AsRawFd>(fd: R) -> Fd {
+    pub fn new<R>(fd: R) -> Fd where R: AsRawFd {
         Fd(Rc::new(FdBody(fd.as_raw_fd())))
     }
 
@@ -53,32 +88,6 @@ impl std::fmt::Display for Fd {
     }
 } // impl std::fmt::Display for EventState
 
-pub fn format_action(f: &mut std::fmt::Formatter, action: &Action)
-                     -> std::fmt::Result {
-    write!(f, "{:?}", Rc::as_ptr(action))
-}
-
-pub fn action_to_string(action: &Action) -> String {
-    format!("{:?}", Rc::as_ptr(action))
-}
-
-pub fn format_callback(f: &mut std::fmt::Formatter, callback: &Option<Action>)
-                       -> std::fmt::Result {
-    if let Some(action) = callback {
-        format_action(f, &action)
-    } else {
-        Ok(())
-    }
-}
-
-pub fn callback_to_string(callback: &Option<Action>) -> String {
-    if let Some(action) = callback {
-        action_to_string(action)
-    } else {
-        "".to_string()
-    }
-}
-
 #[derive(Debug)]
 struct Link<Body: ?Sized> {
     uid: UID,
@@ -98,6 +107,7 @@ enum TimerKind {
     Canceled,
 }
 
+#[derive(Debug)]
 struct TimerBody {
     disk_ref: WeakDisk,
     expires: Instant,
@@ -105,18 +115,6 @@ struct TimerBody {
     kind: TimerKind,
     action: Option<Action>,
     stack_trace: Option<String>,
-}
-
-impl std::fmt::Debug for TimerBody {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TimerBody")
-            .field("expires", &self.expires)
-            .field("uid", &self.uid)
-            .field("kind", &self.kind)
-            .field("action", &callback_to_string(&self.action))
-            .field("stack_trace", &self.stack_trace)
-            .finish()
-    }
 }
 
 #[derive(Debug)]
@@ -276,7 +274,7 @@ impl Disk {
         let timer_uid = UID::new();
         TRACE!(ATEN_DISK_EXECUTE {
             DISK: self, TIMER: timer_uid, EXPIRES: r3::time(now),
-            ACTION: action_to_string(&action),
+            ACTION: &action,
         });
         let (timer, timer_ref) = self.new_timer(
             timer_uid, TimerKind::Pending, now, action);
@@ -288,7 +286,7 @@ impl Disk {
         let timer_uid = UID::new();
         TRACE!(ATEN_DISK_SCHEDULE {
             DISK: self, TIMER: timer_uid, EXPIRES: r3::time(expires),
-            ACTION: action_to_string(&action),
+            ACTION: &action,
         });
         let (timer, timer_ref) = self.new_timer(
             timer_uid, TimerKind::Scheduled, expires, action);
@@ -299,7 +297,7 @@ impl Disk {
     pub fn make_event(&self, action: Action) -> Event {
         let event_uid = UID::new();
         TRACE!(ATEN_DISK_EVENT_CREATE {
-            DISK: self, EVENT: event_uid, ACTION: action_to_string(&action),
+            DISK: self, EVENT: event_uid, ACTION: &action,
         });
         let stack_trace =
             if TRACE_ENABLED!(ATEN_DISK_TIMER_BT) {
@@ -368,7 +366,7 @@ impl Disk {
                         if let Some(action) = timer_body.action.take() {
                             TRACE!(ATEN_DISK_POLL_TIMEOUT {
                                 DISK: self, TIMER: timer_body.uid,
-                                ACTION: action_to_string(&action),
+                                ACTION: &action,
                             });
                             if TRACE_ENABLED!(ATEN_DISK_TIMER_BT) {
                                 if let Some(stack) = &timer_body.stack_trace {
@@ -464,7 +462,7 @@ impl Disk {
     pub fn poll(&self) -> Result<Option<Instant>> {
         match self.pop_timer() {
             PoppedTimer::TimerExpired(action) => {
-                (action)();
+                action.perform();
                 return Ok(Some(self.body().recent));
             }
             PoppedTimer::NextTimerExpiry(expiry) => {
@@ -488,7 +486,7 @@ impl Disk {
         while countdown > 0 {
             match self.pop_timer() {
                 PoppedTimer::TimerExpired(action) => {
-                    (action)();
+                    action.perform();
                     countdown -= 1;
                 }
                 PoppedTimer::NextTimerExpiry(expiry) => {
@@ -506,7 +504,7 @@ impl Disk {
                -> Result<()> {
         const MAX_IO_BURST: u8 = 20;
         loop {
-            (drain)();
+            drain.perform();
             let result = self.take_immediate_action();
             if self.body().quit {
                 TRACE!(ATEN_DISK_LOOP_QUIT { DISK: self });
@@ -523,9 +521,9 @@ impl Disk {
                 events: 0,
                 u64: 0,
             }; MAX_IO_BURST as usize];
-            (unlock)();
+            unlock.perform();
             let result = epoll_wait(&self.fd(), &mut epoll_events, dur_ms);
-            (lock)();
+            lock.perform();
             match result {
                 Err(err) => {
                     TRACE!(ATEN_DISK_LOOP_FAIL {
@@ -556,8 +554,7 @@ impl Disk {
     pub fn main_loop(&self) -> Result<()> {
         TRACE!(ATEN_DISK_LOOP { DISK: self });
         assert!(self.mut_body().wakeup_fd.is_none());
-        let noop = Rc::new(move || {});
-        self.do_loop(noop.clone(), noop.clone(), noop)?;
+        self.do_loop(Action::noop(), Action::noop(), Action::noop())?;
         TRACE!(ATEN_DISK_LOOP_FINISH { DISK: self });
         Ok(())
     }
@@ -577,7 +574,7 @@ impl Disk {
         TRACE!(ATEN_DISK_PROTECTED_LOOP { DISK: self });
         let write_fd = pipe_fds[1] as RawFd;
         self.mut_body().wakeup_fd = Some(Fd::new(write_fd));
-        self.register(&Fd::new(pipe_fds[0]), Rc::new(|| {}))
+        self.register(&Fd::new(pipe_fds[0]), Action::noop())
     }
 
     fn finish_protected_loop(&self) -> Result<()> {
@@ -592,7 +589,7 @@ impl Disk {
         self.do_loop(
             lock,
             unlock,
-            Rc::new(move || { drain(&registration.fd); }))?;
+            Action::new(move || { drain(&registration.fd); }))?;
         self.finish_protected_loop()
     }
 
@@ -601,7 +598,7 @@ impl Disk {
         if let Err(err) = nonblock(fd) {
             TRACE!(ATEN_DISK_REGISTER_NONBLOCK_FAIL {
                 DISK: self, FD: fd, FLAGS: r3::hex(flags as u64),
-                ACTION: action_to_string(&action), ERR: errsym(&err),
+                ACTION: &action, ERR: errsym(&err),
             });
             return Err(err);
         }
@@ -618,13 +615,12 @@ impl Disk {
             let err = Error::last_os_error();
             TRACE!(ATEN_DISK_REGISTER_FAIL {
                 DISK: self, FD: fd, FLAGS: r3::hex(flags as u64),
-                ACTION: action_to_string(&action), ERR: errsym(&err),
+                ACTION: &action, ERR: errsym(&err),
             });
             return Err(err);
         }
         TRACE!(ATEN_DISK_REGISTER {
-            DISK: self, FD: fd, FLAGS: r3::hex(flags as u64),
-            ACTION: action_to_string(&action)
+            DISK: self, FD: fd, FLAGS: r3::hex(flags as u64), ACTION: &action,
         });
         self.mut_body().registrations.insert(
             fd.as_raw_fd(), self.make_event(action));
@@ -852,23 +848,13 @@ impl std::fmt::Display for EventState {
     }
 } // impl std::fmt::Display for EventState
 
+#[derive(Debug)]
 struct EventBody {
     disk_ref: WeakDisk,
     uid: UID,
     state: EventState,
     action: Option<Action>,
     stack_trace: Option<String>,
-}
-
-impl std::fmt::Debug for EventBody {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("EventBody")
-            .field("uid", &self.uid)
-            .field("state", &self.state)
-            .field("action", &callback_to_string(&self.action))
-            .field("stack_trace", &self.stack_trace)
-            .finish()
-    }
 }
 
 impl Drop for EventBody {
@@ -896,7 +882,7 @@ impl Event {
             EventState::Triggered => {
                 self.set_state(EventState::Idle);
                 if let Some(action) = self.0.body.borrow_mut().action.take() {
-                    (action)();
+                    action.perform();
                 } else {
                     unreachable!();
                 }
@@ -920,7 +906,7 @@ impl Event {
                                 event.perf();
                             }
                         };
-                        disk_ref.execute(Rc::new(delegate));
+                        disk_ref.execute(Action::new(delegate));
                     }
                     None => {
                         return;

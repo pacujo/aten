@@ -4,7 +4,7 @@ use std::io::{Error, Result};
 use std::os::unix::io::AsRawFd;
 
 use crate::{Disk, WeakDisk, Link, WeakLink, UID, Action, Registration, Fd};
-use crate::{error, action_to_string, callback_to_string};
+use crate::error;
 use crate::stream::ByteStream;
 use r3::{TRACE, Traceable};
 
@@ -22,6 +22,7 @@ impl State {
     }
 } // impl State
 
+#[derive(Debug)]
 pub struct LingerBody {
     weak_disk: WeakDisk,
     uid: UID,
@@ -86,21 +87,6 @@ impl std::fmt::Display for LingerBody {
     }
 } // impl std::fmt::Display for StreamBody
 
-impl std::fmt::Debug for LingerBody {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("LingerBody")
-            .field("uid", &self.uid)
-            .field("source", &self.source)
-            .field("dest", &self.dest)
-            .field("buf", &self.buf)
-            .field("cursor", &self.cursor)
-            .field("length", &self.length)
-            .field("callback", &callback_to_string(&self.callback))
-            .field("state", &self.state)
-            .finish()
-    }
-}
-
 #[derive(Debug)]
 pub struct Linger(Link<LingerBody>);
 
@@ -130,7 +116,7 @@ impl Linger {
         });
         if !sync {
             let weak_linger = linger.downgrade();
-            let jockey = Rc::new(move || {
+            let jockey = Action::new(move || {
                 weak_linger.upped(|linger| { linger.jockey(); });
             });
             match disk.register(dest, jockey) {
@@ -148,7 +134,7 @@ impl Linger {
         }
         TRACE!(ATEN_LINGER_CREATE { DISK: disk, LINGER: uid, SYNC: sync });
         let weak_linger = linger.downgrade();
-        source.register_callback(Rc::new(move || {
+        source.register_callback(Action::new(move || {
             weak_linger.upped(|linger| { linger.jockey(); });
         }));
         Ok(linger)
@@ -163,7 +149,7 @@ impl Linger {
 
     pub fn register_callback(&self, callback: Action) {
         TRACE!(ATEN_LINGER_REGISTER_CALLBACK {
-            LINGER: self.0.uid, CALLBACK: action_to_string(&callback)
+            LINGER: self.0.uid, CALLBACK: &callback
         });
         self.0.body.borrow_mut().callback = Some(callback);
     }
@@ -298,7 +284,7 @@ impl Linger {
 
     pub fn prod(&self) {
         let weak_linger = self.downgrade();
-        let jockey = Rc::new(move || {
+        let jockey = Action::new(move || {
             weak_linger.upped(|linger| { linger.jockey(); });
         });
         self.0.body.borrow().weak_disk.upped(|disk| {

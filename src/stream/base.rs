@@ -3,6 +3,7 @@ use std::io::Result;
 use crate::{WeakDisk, UID, Action, error};
 use crate::stream::{ByteStreamBody};
 
+#[derive(Debug)]
 pub struct StreamBody {
     weak_disk: WeakDisk,
     uid: UID,
@@ -61,14 +62,3 @@ impl ByteStreamBody for StreamBody {
         self.callback = None;
     }
 } // impl ByteStreamBody for StreamBody
-
-impl std::fmt::Debug for StreamBody {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("base::StreamBody")
-            .field("weak_disk", &self.weak_disk)
-            .field("uid", &self.uid)
-            .field("callback", &self.callback.is_some())
-            .finish()
-    }
-} // impl Debug for StreamBody 
-
