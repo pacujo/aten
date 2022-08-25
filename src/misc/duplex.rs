@@ -1,9 +1,8 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::io::Result;
-use std::os::unix::io::RawFd;
 
-use crate::{Disk, WeakDisk, Link, WeakLink, UID, Registration};
+use crate::{Disk, WeakDisk, Link, WeakLink, UID, Registration, Fd};
 use crate::stream::{ByteStream, switch, file, dry, empty};
 use crate::misc::{Linger};
 use r3::{TRACE, Traceable};
@@ -54,7 +53,7 @@ impl std::fmt::Display for DuplexBody {
 pub struct Duplex(Link<DuplexBody>);
 
 impl Duplex {
-    pub fn new(disk: &Disk, fd: RawFd) -> Result<Duplex> {
+    pub fn new(disk: &Disk, fd: &Fd) -> Result<Duplex> {
         let uid = UID::new();
         let eswitch = switch::Stream::new(
             &disk, dry::Stream::new(&disk).as_bytestream());
@@ -63,9 +62,9 @@ impl Duplex {
             uid: uid,
             ingress: Some(switch::Stream::new(
                 &disk, file::Stream::new(
-                    &disk, fd, true).unwrap().as_bytestream())),
+                    &disk, &fd, true).unwrap().as_bytestream())),
             egress: Some(Linger::new(
-                &disk, eswitch.as_bytestream(), fd, true).unwrap()),
+                &disk, eswitch.as_bytestream(), &fd, true).unwrap()),
             eswitch: Some(eswitch),
             registration: None,
         };

@@ -1,9 +1,9 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::io::{Result, Error};
-use std::os::unix::io::RawFd;
+use std::os::unix::io::AsRawFd;
 
-use crate::{Disk, Link, UID, Registration};
+use crate::{Disk, Link, UID, Registration, Fd};
 use crate::stream::{ByteStreamBody, base};
 use r3::{TRACE, Traceable};
 
@@ -21,14 +21,15 @@ DECLARE_STREAM!(
 #[derive(Debug)]
 struct StreamBody {
     base: base::StreamBody,
-    fd: RawFd,
+    fd: Fd,
     registration: Option<Registration>,
 }
 
 impl StreamBody {
     fn read_nontrivial(&mut self, buf: &mut [u8]) -> Result<usize> {
         let count = unsafe {
-            libc::read(self.fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len())
+            libc::read(self.fd.as_raw_fd(),
+                       buf.as_mut_ptr() as *mut libc::c_void, buf.len())
         };
         if count < 0 {
             Err(Error::last_os_error())
@@ -41,11 +42,11 @@ impl StreamBody {
 impl Stream {
     IMPL_STREAM!();
 
-    pub fn new(disk: &Disk, fd: RawFd, sync: bool) -> Result<Stream> {
+    pub fn new(disk: &Disk, fd: &Fd, sync: bool) -> Result<Stream> {
         let uid = UID::new();
         let body = StreamBody {
             base: base::StreamBody::new(disk.downgrade(), uid),
-            fd: fd,
+            fd: fd.clone(),
             registration: None,
         };
         let stream = Stream(Link {

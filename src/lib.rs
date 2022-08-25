@@ -10,13 +10,48 @@ use std::cell::{Ref, RefCell, RefMut};
 use std::collections::{BTreeMap, HashMap, LinkedList};
 use std::io::{Error, Result};
 use std::option::Option;
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{RawFd, AsRawFd};
 use std::rc::{Rc, Weak};
 use std::time::{Instant, Duration};
 use r3::{TRACE, TRACE_ENABLED, Traceable, errsym};
 
 pub type UID = r3::UID;
 pub type Action = Rc<dyn Fn() + 'static>;
+
+#[derive(Debug)]
+struct FdBody(RawFd);
+
+impl Drop for FdBody {
+    fn drop(&mut self) {
+        TRACE!(ATEN_FD_DROP { FD: self.0 });
+        unsafe { libc::close(self.0) };
+    }
+} // impl Drop for FdBody
+
+#[derive(Debug)]
+pub struct Fd(Rc<FdBody>);
+
+impl Fd {
+    pub fn new<R: AsRawFd>(fd: R) -> Fd {
+        Fd(Rc::new(FdBody(fd.as_raw_fd())))
+    }
+
+    pub fn clone(&self) -> Fd {
+        Fd(Rc::clone(&self.0))
+    }
+} // impl Fd
+
+impl AsRawFd for Fd {
+    fn as_raw_fd(&self) -> RawFd {
+        self.0.0
+    }
+} // impl AsRawFd
+
+impl std::fmt::Display for Fd {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+} // impl std::fmt::Display for EventState
 
 pub fn format_action(f: &mut std::fmt::Formatter, action: &Action)
                      -> std::fmt::Result {
@@ -137,12 +172,12 @@ type WeakTimer = Timer;
 #[derive(Debug)]
 struct DiskBody {
     uid: UID,
-    poll_fd: RawFd,
+    poll_fd: Fd,
     immediate: LinkedList<Rc<RefCell<TimerBody>>>,
     timers: BTreeMap<(Instant, UID), Rc<RefCell<TimerBody>>>,
     registrations: HashMap<RawFd, Event>,
     quit: bool,
-    wakeup_fd: Option<RawFd>,
+    wakeup_fd: Option<Fd>,
     recent: Instant,
     rounder_upper: Duration,
 }
@@ -150,10 +185,6 @@ struct DiskBody {
 impl Drop for DiskBody {
     fn drop(&mut self) {
         TRACE!(ATEN_DISK_DROP { DISK: self.uid });
-        unsafe { libc::close(self.poll_fd) };
-        if let Some(fd) = self.wakeup_fd {
-            unsafe { libc::close(fd) };
-        }
     }
 } // impl Drop for DiskBody
 
@@ -171,7 +202,7 @@ impl Disk {
         let uid = UID::new();
         let body = DiskBody {
             uid: uid,
-            poll_fd: poll_fd,
+            poll_fd: Fd::new(poll_fd),
             immediate: LinkedList::new(),
             timers: BTreeMap::new(),
             registrations: HashMap::new(),
@@ -205,9 +236,9 @@ impl Disk {
 
     pub fn wake_up(&self) {
         TRACE!(ATEN_DISK_WAKE_UP { DISK: self });
-        if let Some(fd) = self.body().wakeup_fd {
+        if let Some(fd) = &self.body().wakeup_fd {
             let dummy_byte = &0u8 as *const _ as *const libc::c_void;
-            if unsafe { libc::write(fd, dummy_byte, 1) } < 0 {
+            if unsafe { libc::write(fd.as_raw_fd(), dummy_byte, 1) } < 0 {
                 assert_eq!(Error::last_os_error().raw_os_error(),
                            Some(libc::EAGAIN));
             }
@@ -289,8 +320,8 @@ impl Disk {
         })
     }
 
-    pub fn fd(&self) -> RawFd {
-        self.body().poll_fd
+    pub fn fd(&self) -> Fd {
+        self.body().poll_fd.clone()
     }
 
     fn next_step(&self) -> NextStep {
@@ -393,7 +424,8 @@ impl Disk {
 
     fn sleep(&self, until: Instant) -> Result<()> {
         if let Err(err) = epoll_wait(
-            self.fd(), &mut vec![], self.milliseconds_remaining(until, None)) {
+            &self.fd(), &mut vec![],
+            self.milliseconds_remaining(until, None)) {
             TRACE!(ATEN_DISK_SLEEP_FAIL { DISK: self, ERR: errsym(&err) });
             return Err(err);
         }
@@ -406,7 +438,7 @@ impl Disk {
             events: 0,
             u64: 0,
         }];
-        match epoll_wait(self.fd(), &mut epoll_events, 0) {
+        match epoll_wait(&self.fd(), &mut epoll_events, 0) {
             Err(err) => {
                 TRACE!(ATEN_DISK_POLL_FAIL { DISK: self, ERR: errsym(&err) });
                 return Err(err);
@@ -492,7 +524,7 @@ impl Disk {
                 u64: 0,
             }; MAX_IO_BURST as usize];
             (unlock)();
-            let result = epoll_wait(self.fd(), &mut epoll_events, dur_ms);
+            let result = epoll_wait(&self.fd(), &mut epoll_events, dur_ms);
             (lock)();
             match result {
                 Err(err) => {
@@ -544,22 +576,13 @@ impl Disk {
         }
         TRACE!(ATEN_DISK_PROTECTED_LOOP { DISK: self });
         let write_fd = pipe_fds[1] as RawFd;
-        self.mut_body().wakeup_fd = Some(write_fd);
-        self.register(pipe_fds[0] as RawFd, Rc::new(|| {}))
+        self.mut_body().wakeup_fd = Some(Fd::new(write_fd));
+        self.register(&Fd::new(pipe_fds[0]), Rc::new(|| {}))
     }
 
-    fn finish_protected_loop(&self, registration: Registration) -> Result<()> {
+    fn finish_protected_loop(&self) -> Result<()> {
         TRACE!(ATEN_DISK_PROTECTED_LOOP_FINISH { DISK: self });
-        let mut body = self.mut_body();
-        let wakup_fd =
-            if let Some(fd) = body.wakeup_fd {
-                fd
-            } else {
-                panic!("wakeup_fd unset")
-            };
-        unsafe { libc::close(registration.fd) };
-        unsafe { libc::close(wakup_fd) };
-        body.wakeup_fd = None;
+        self.mut_body().wakeup_fd = None;
         Ok(())
     }
 
@@ -569,11 +592,11 @@ impl Disk {
         self.do_loop(
             lock,
             unlock,
-            Rc::new(move || { drain(registration.fd); }))?;
-        self.finish_protected_loop(registration)
+            Rc::new(move || { drain(&registration.fd); }))?;
+        self.finish_protected_loop()
     }
 
-    fn register_with_flags(&self, fd: RawFd, flags: u32, action: Action)
+    fn register_with_flags(&self, fd: &Fd, flags: u32, action: Action)
                            -> Result<Registration> {
         if let Err(err) = nonblock(fd) {
             TRACE!(ATEN_DISK_REGISTER_NONBLOCK_FAIL {
@@ -584,10 +607,12 @@ impl Disk {
         }
         let mut epoll_event = libc::epoll_event {
 	    events: flags,
-            u64: fd as u64,
+            u64: fd.as_raw_fd() as u64,
         };
         let status = unsafe {
-            libc::epoll_ctl(self.fd(), libc::EPOLL_CTL_ADD, fd, &mut epoll_event)
+            libc::epoll_ctl(
+                self.fd().as_raw_fd(), libc::EPOLL_CTL_ADD,
+                fd.as_raw_fd(), &mut epoll_event)
         };
         if status < 0 {
             let err = Error::last_os_error();
@@ -602,22 +627,22 @@ impl Disk {
             ACTION: action_to_string(&action)
         });
         self.mut_body().registrations.insert(
-            fd, self.make_event(action));
+            fd.as_raw_fd(), self.make_event(action));
         self.wake_up();
         Ok(Registration {
             weak_disk: self.downgrade(),
-            fd: fd,
+            fd: fd.clone(),
         })
     }
 
-    pub fn register(&self, fd: RawFd, action: Action) -> Result<Registration> {
+    pub fn register(&self, fd: &Fd, action: Action) -> Result<Registration> {
         self.register_with_flags(
             fd,
             (libc::EPOLLIN | libc::EPOLLOUT | libc::EPOLLET) as u32,
             action)
     }
 
-    pub fn register_old_school(&self, fd: RawFd, action: Action)
+    pub fn register_old_school(&self, fd: &Fd, action: Action)
                                -> Result<Registration> {
         self.register_with_flags(
             fd,
@@ -625,14 +650,14 @@ impl Disk {
             action)
     }
 
-    fn modify_old_school(&self, fd: RawFd, readable: bool, writable: bool)
+    fn modify_old_school(&self, fd: &Fd, readable: bool, writable: bool)
                          -> Result<()> {
-        if !self.body().registrations.contains_key(&fd) {
+        if !self.body().registrations.contains_key(&fd.as_raw_fd()) {
             return Err(error::badf())
         }
         let mut epoll_event = libc::epoll_event {
 	    events: 0,
-            u64: fd as u64,
+            u64: fd.as_raw_fd() as u64,
         };
         if readable {
             epoll_event.events |= libc::EPOLLIN as u32;
@@ -641,7 +666,9 @@ impl Disk {
             epoll_event.events |= libc::EPOLLOUT as u32;
         };
         let status = unsafe {
-            libc::epoll_ctl(self.fd(), libc::EPOLL_CTL_MOD, fd, &mut epoll_event)
+            libc::epoll_ctl(
+                self.fd().as_raw_fd(), libc::EPOLL_CTL_MOD,
+                fd.as_raw_fd(), &mut epoll_event)
         };
         if status < 0 {
             let err = Error::last_os_error();
@@ -658,15 +685,14 @@ impl Disk {
         Ok(())
     }
 
-    fn unregister(&self, fd: RawFd) {
-        if let Some(_) = self.mut_body().registrations.remove(&fd) {
-        } else {
-            panic!("unregistering file descriptor that has not been registered");
-        }
+    fn unregister(&self, fd: &Fd) {
+        let result = self.mut_body().registrations.remove(&fd.as_raw_fd());
+        assert!(result.is_some());
         let mut epoll_events: Vec<libc::epoll_event> = vec![];
         let status = unsafe {
             libc::epoll_ctl(
-                self.fd(), libc::EPOLL_CTL_DEL, fd, epoll_events.as_mut_ptr())
+                self.fd().as_raw_fd(), libc::EPOLL_CTL_DEL,
+                fd.as_raw_fd(), epoll_events.as_mut_ptr())
         };
         if status < 0 {
             let err = Error::last_os_error();
@@ -764,14 +790,14 @@ impl WeakDisk {
 #[derive(Debug)]
 pub struct Registration {
     weak_disk: WeakDisk,
-    fd: RawFd,
+    fd: Fd,
 }
 
 impl Registration {
     pub fn modify_old_school(&self, readable: bool, writable: bool)
                              -> Option<Result<()>> {
         self.weak_disk.upped(|disk| {
-            disk.modify_old_school(self.fd, readable, writable)
+            disk.modify_old_school(&self.fd, readable, writable)
         })
     }
 }
@@ -779,7 +805,7 @@ impl Registration {
 impl Drop for Registration {
     fn drop(&mut self) {
         self.weak_disk.upped(|disk| {
-            disk.unregister(self.fd);
+            disk.unregister(&self.fd);
         }).or_else(|| {
             TRACE!(ATEN_DISK_REGISTRATION_DROP_POSTHUMOUSLY {
                 DISK: self.weak_disk.0.uid, FD: self.fd
@@ -951,15 +977,16 @@ impl WeakEvent {
         }
     }
 } // impl WeakEvent
-fn nonblock(fd: RawFd) -> Result<()> {
+
+fn nonblock(fd: &Fd) -> Result<()> {
     let status = unsafe {
-        libc::fcntl(fd, libc::F_GETFL, 0)
+        libc::fcntl(fd.as_raw_fd(), libc::F_GETFL, 0)
     };
     if status < 0 {
         return Err(Error::last_os_error());
     }
     let status = unsafe {
-        libc::fcntl(fd, libc::F_SETFL, status | libc::O_NONBLOCK)
+        libc::fcntl(fd.as_raw_fd(), libc::F_SETFL, status | libc::O_NONBLOCK)
     };
     if status < 0 {
         return Err(Error::last_os_error());
@@ -967,12 +994,13 @@ fn nonblock(fd: RawFd) -> Result<()> {
     Ok(())
 }
 
-fn drain(fd: RawFd) {
-    const BUF_SIZE: usize = 1024;
-    let mut buffer = vec![0u8; BUF_SIZE];
+fn drain(fd: &Fd) {
+    let mut buffer = vec![0u8; 1024];
     loop {
         let count = unsafe {
-            libc::read(fd, buffer.as_mut_ptr() as *mut libc::c_void, BUF_SIZE)
+            libc::read(fd.as_raw_fd(),
+                       buffer.as_mut_ptr() as *mut libc::c_void,
+                       buffer.len())
         };
         if count <= 0 {
             break
@@ -980,10 +1008,10 @@ fn drain(fd: RawFd) {
     }
 }
 
-fn epoll_wait(fd: RawFd, epoll_events: &mut Vec<libc::epoll_event>,
+fn epoll_wait(fd: &Fd, epoll_events: &mut Vec<libc::epoll_event>,
               ms: libc::c_int) -> Result<usize> {
     let count = unsafe {
-        libc::epoll_wait(fd, epoll_events.as_mut_ptr(),
+        libc::epoll_wait(fd.as_raw_fd(), epoll_events.as_mut_ptr(),
                          epoll_events.len() as libc::c_int, ms)
     };
     if count < 0 {

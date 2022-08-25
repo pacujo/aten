@@ -1,9 +1,9 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::io::{Error, Result};
-use std::os::unix::io::RawFd;
+use std::os::unix::io::AsRawFd;
 
-use crate::{Disk, WeakDisk, Link, WeakLink, UID, Action, Registration};
+use crate::{Disk, WeakDisk, Link, WeakLink, UID, Action, Registration, Fd};
 use crate::{error, action_to_string, callback_to_string};
 use crate::stream::ByteStream;
 use r3::{TRACE, Traceable};
@@ -26,7 +26,7 @@ pub struct LingerBody {
     weak_disk: WeakDisk,
     uid: UID,
     source: ByteStream,
-    dest: RawFd,
+    dest: Fd,
     buf: Vec<u8>,
     cursor: usize,
     length: usize,
@@ -105,7 +105,7 @@ impl std::fmt::Debug for LingerBody {
 pub struct Linger(Link<LingerBody>);
 
 impl Linger {
-    pub fn new(disk: &Disk, source: ByteStream, dest: RawFd, sync: bool)
+    pub fn new(disk: &Disk, source: ByteStream, dest: &Fd, sync: bool)
                -> Result<Linger> {
         const BUF_SIZE: usize = 10000;
         let uid = UID::new();
@@ -113,7 +113,7 @@ impl Linger {
             weak_disk: disk.downgrade(),
             uid: uid,
             source: source.clone(),
-            dest: dest,
+            dest: dest.clone(),
             buf: vec![0; BUF_SIZE],
             cursor: 0,
             length: 0,
@@ -239,7 +239,7 @@ impl Linger {
             while body.cursor < body.length {
                 let slice = &body.buf[body.cursor..body.length];
                 let count = unsafe {
-                    libc::write(body.dest,
+                    libc::write(body.dest.as_raw_fd(),
                                 slice.as_ptr() as *const libc::c_void,
                                 slice.len())
                 };
