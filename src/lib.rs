@@ -17,13 +17,11 @@ use r3::{TRACE, TRACE_ENABLED, Traceable, errsym};
 
 pub type UID = r3::UID;
 
-struct ActionBody(Box<dyn Fn() + 'static>);
-
-pub struct Action(Rc<ActionBody>);
+pub struct Action(Rc<Box<dyn Fn() + 'static>>);
 
 impl Action {
     pub fn new<F>(f: F) -> Action where F: Fn() + 'static {
-        Action(Rc::new(ActionBody(Box::new(f))))
+        Action(Rc::new(Box::new(f)))
     }
 
     pub fn noop() -> Action {
@@ -31,13 +29,13 @@ impl Action {
     }
 
     pub fn perform(&self) {
-        (self.0.0)();
+        (self.0)();
     }
 } // impl Action
 
 impl ToString for Action {
     fn to_string(&self) -> String {
-        format!("{:p}", self.0.0)
+        format!("{:p}", self.0)
     }
 } // impl ToString for Action
 
@@ -49,7 +47,7 @@ impl Clone for Action {
 
 impl std::fmt::Debug for Action {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:p}", self.0.0)
+        write!(f, "{:p}", self.0)
     }
 } // impl std::fmt::Debug for Action
 
@@ -80,24 +78,24 @@ impl AsRawFd for Fd {
     fn as_raw_fd(&self) -> RawFd {
         self.0.0
     }
-} // impl AsRawFd
+} // impl AsRawFd for Fd
 
 impl std::fmt::Display for Fd {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{:?}", self)
     }
-} // impl std::fmt::Display for EventState
+} // impl std::fmt::Display for Fd
 
 #[derive(Debug)]
-struct Link<Body: ?Sized> {
-    uid: UID,
-    body: Rc<RefCell<Body>>,
+pub struct Link<Body: ?Sized> {
+    pub uid: UID,
+    pub body: Rc<RefCell<Body>>,
 }
 
 #[derive(Debug)]
-struct WeakLink<Body: ?Sized> {
-    uid: UID,
-    body: Weak<RefCell<Body>>,
+pub struct WeakLink<Body: ?Sized> {
+    pub uid: UID,
+    pub body: Weak<RefCell<Body>>,
 }
 
 #[derive(Debug)]
@@ -964,7 +962,7 @@ impl WeakEvent {
     }
 } // impl WeakEvent
 
-fn nonblock(fd: &Fd) -> Result<()> {
+pub fn nonblock(fd: &Fd) -> Result<()> {
     let status = unsafe {
         libc::fcntl(fd.as_raw_fd(), libc::F_GETFL, 0)
     };
@@ -1011,11 +1009,11 @@ pub mod error;
 
 #[macro_export]
 macro_rules! DISPLAY_LINK_UID {
-    ($typename:ident) => {
-        impl std::fmt::Display for $typename {
+    ($Type:ident) => {
+        impl std::fmt::Display for $Type {
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 write!(f, "{}", self.0.uid)
             }
-        } // impl std::fmt::Display for DryStreamBody
+        }
     }
 }
