@@ -4,7 +4,7 @@ use std::io::{Error, Result};
 use std::os::unix::io::AsRawFd;
 
 use crate::{Disk, WeakDisk, Link, WeakLink, UID, Action, Registration, Fd};
-use crate::error;
+use crate::{Downgradable, error, DECLARE_LINKS};
 use crate::stream::ByteStream;
 use r3::{TRACE, Traceable};
 
@@ -87,8 +87,8 @@ impl std::fmt::Display for LingerBody {
     }
 } // impl std::fmt::Display for StreamBody
 
-#[derive(Debug)]
-pub struct Linger(Link<LingerBody>);
+
+DECLARE_LINKS!(Linger, WeakLinger, LingerBody, ATEN_LINGER_UPPED_MISS, LINGER);
 
 impl Linger {
     pub fn new(disk: &Disk, source: ByteStream, dest: &Fd, sync: bool)
@@ -138,13 +138,6 @@ impl Linger {
             weak_linger.upped(|linger| { linger.jockey(); });
         }));
         Ok(linger)
-    }
-
-    pub fn downgrade(&self) -> WeakLinger {
-        WeakLinger(WeakLink {
-            uid: self.0.uid,
-            body: Rc::downgrade(&self.0.body),
-        })
     }
 
     pub fn register_callback(&self, callback: Action) {
@@ -292,27 +285,3 @@ impl Linger {
         });
     }
 } // impl Linger
-
-#[derive(Debug)]
-pub struct WeakLinger(WeakLink<LingerBody>);
-
-impl WeakLinger {
-    pub fn upgrade(&self) -> Option<Linger> {
-        self.0.body.upgrade().map(|body|
-            Linger(Link {
-                uid: self.0.uid,
-                body: body,
-            }))
-    }
-
-    pub fn upped<F, R>(&self, f: F) -> Option<R> where F: Fn(&Linger) -> R {
-        match self.upgrade() {
-            Some(linger) => Some(f(&linger)),
-            None => {
-                TRACE!(ATEN_LINGER_UPPED_MISS { LINGER: self.0.uid });
-                None
-            }
-        }
-    }
-} // impl WeakLinger
-

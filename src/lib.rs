@@ -82,7 +82,7 @@ impl AsRawFd for Fd {
 
 impl std::fmt::Display for Fd {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{}", self.as_raw_fd())
     }
 } // impl std::fmt::Display for Fd
 
@@ -184,8 +184,11 @@ impl Drop for DiskBody {
     }
 } // impl Drop for DiskBody
 
-#[derive(Debug)]
-pub struct Disk(Link<DiskBody>);
+pub trait Downgradable<T> {
+    fn downgrade(&self) -> T;
+}
+
+DECLARE_LINKS!(Disk, WeakDisk, DiskBody, ATEN_DISK_UPPED_MISS, DISK);
 
 impl Disk {
     pub fn new() -> Result<Disk> {
@@ -304,7 +307,7 @@ impl Disk {
                 None
             };
         let event_body = EventBody {
-            disk_ref: self.downgrade(),
+            weak_disk: self.downgrade(),
             uid: event_uid,
             state: EventState::Idle,
             action: Some(action),
@@ -529,10 +532,17 @@ impl Disk {
                     });
                     return Err(err);
                 }
+                Ok(0) => {
+                    TRACE!(ATEN_DISK_LOOP_TIMEOUT { DISK: self });
+                }
                 Ok(count) => {
                     for i in 0..count {
-                        match self.body().registrations.get(
-                            &(epoll_events[i].u64 as RawFd)) {
+                        let event = self.body().registrations.get(
+                            &(epoll_events[i].u64 as RawFd)).map(
+                            |event| { event.clone() }
+                        );
+                        // body unborrowed
+                        match event {
                             Some(event) => {
                                 TRACE!(ATEN_DISK_LOOP_EXECUTE {
                                     DISK: self, EVENT: event
@@ -542,7 +552,7 @@ impl Disk {
                             None => {
                                 TRACE!(ATEN_DISK_LOOP_SPURIOUS { DISK: self });
                             }
-                        }
+                        };
                     }
                 }
             }
@@ -724,13 +734,6 @@ impl Disk {
         }
     }
 
-    pub fn downgrade(&self) -> WeakDisk {
-        WeakDisk(WeakLink {
-            uid: self.0.uid,
-            body: Rc::downgrade(&self.0.body),
-        })
-    }
-
     pub fn in_secs(&self, n: u64) -> Instant {
         self.now() + Duration::from_secs(n)
     }
@@ -755,31 +758,6 @@ impl Disk {
         self.now() + Duration::from_secs_f64(x)
     }
 } // impl Disk
-
-DISPLAY_LINK_UID!(Disk);
-
-#[derive(Debug)]
-pub struct WeakDisk(WeakLink<DiskBody>);
-
-impl WeakDisk {
-    pub fn upgrade(&self) -> Option<Disk> {
-        self.0.body.upgrade().map(|body|
-            Disk(Link {
-                uid: self.0.uid,
-                body: body,
-            }))
-    }
-
-    pub fn upped<F, R>(&self, f: F) -> Option<R> where F: Fn(&Disk) -> R {
-        match self.upgrade() {
-            Some(disk) => Some(f(&disk)),
-            None => {
-                TRACE!(ATEN_DISK_UPPED_MISS { DISK: self.0.uid });
-                None
-            }
-        }
-    }
-} // impl WeakDisk
 
 #[derive(Debug)]
 pub struct Registration {
@@ -848,7 +826,7 @@ impl std::fmt::Display for EventState {
 
 #[derive(Debug)]
 struct EventBody {
-    disk_ref: WeakDisk,
+    weak_disk: WeakDisk,
     uid: UID,
     state: EventState,
     action: Option<Action>,
@@ -861,25 +839,23 @@ impl Drop for EventBody {
     }
 } // impl Drop for EventBody
 
-#[derive(Debug)]
-pub struct Event(Link<EventBody>);
+DECLARE_LINKS!(Event, WeakEvent, EventBody, ATEN_EVENT_UPPED_MISS, EVENT);
 
-impl Event {
-    fn set_state(&self, state: EventState) {
-        let mut body = self.0.body.borrow_mut();
+impl EventBody {
+    fn set_state(&mut self, state: EventState) {
         TRACE!(ATEN_EVENT_SET_STATE {
-            EVENT: self, OLD: body.state, NEW: state
+            EVENT: self.uid, OLD: &self.state, NEW: &state
         });
-        body.state = state;
+        self.state = state;
     }
 
-    fn perf(&self) {
-        TRACE!(ATEN_EVENT_PERF { EVENT: self });
-        match self.0.body.borrow().state {
+    fn perf(&mut self) {
+        TRACE!(ATEN_EVENT_PERF { EVENT: self.uid });
+        match self.state {
             EventState::Idle => { unreachable!(); }
             EventState::Triggered => {
                 self.set_state(EventState::Idle);
-                if let Some(action) = self.0.body.borrow_mut().action.take() {
+                if let Some(action) = self.action.take() {
                     action.perform();
                 } else {
                     unreachable!();
@@ -891,25 +867,19 @@ impl Event {
         };
     }
 
-    pub fn trigger(&self) {
-        TRACE!(ATEN_EVENT_TRIGGER { EVENT: self });
-        match self.0.body.borrow().state {
+    fn trigger(&mut self, weak_self: WeakEvent) {
+        TRACE!(ATEN_EVENT_TRIGGER { EVENT: self.uid });
+        match self.state {
             EventState::Idle => {
                 self.set_state(EventState::Triggered);
-                match self.0.body.borrow_mut().disk_ref.upgrade() {
-                    Some(disk_ref) => {
-                        let self_ref = self.downgrade();
-                        let delegate = move || {
-                            if let Some(event) = self_ref.upgrade() {
-                                event.perf();
-                            }
-                        };
-                        disk_ref.execute(Action::new(delegate));
-                    }
-                    None => {
-                        return;
-                    }
-                }
+                self.weak_disk.upped(|disk| {
+                    let weak_self = weak_self.clone();
+                    disk.execute(Action::new(move || {
+                        weak_self.upped(|event| {
+                            event.0.body.borrow_mut().perf();
+                        });
+                    }));
+                });
             }
             EventState::Triggered => {}
             EventState::Canceled => {
@@ -918,49 +888,26 @@ impl Event {
         }
     }
 
-    pub fn cancel(&self) {
-        TRACE!(ATEN_EVENT_CANCEL { EVENT: self });
-        match self.0.body.borrow().state {
+    fn cancel(&mut self) {
+        TRACE!(ATEN_EVENT_CANCEL { EVENT: self.uid });
+        match self.state {
             EventState::Idle | EventState::Canceled => {}
             EventState::Triggered => {
                 self.set_state(EventState::Canceled);
             }
         }
     }
+}
 
-    pub fn downgrade(&self) -> WeakEvent {
-        WeakEvent(WeakLink {
-            uid: self.0.uid,
-            body: Rc::downgrade(&self.0.body),
-        })
+impl Event {
+    pub fn trigger(&self) {
+        self.0.body.borrow_mut().trigger(self.downgrade());
+    }
+
+    pub fn cancel(&self) {
+        self.0.body.borrow_mut().cancel();
     }
 } // impl Event
-
-DISPLAY_LINK_UID!(Event);
-
-#[derive(Debug)]
-pub struct WeakEvent(WeakLink<EventBody>);
-
-impl WeakEvent {
-    pub fn upgrade(&self) -> Option<Event> {
-        self.0.body.upgrade().map(|body|
-            Event(Link {
-                uid: self.0.uid,
-                body: body,
-            })
-        )
-    }
-
-    pub fn upped<F, R>(&self, f: F) -> Option<R> where F: Fn(&Event) -> R {
-        match self.upgrade() {
-            Some(event) => Some(f(&event)),
-            None => {
-                TRACE!(ATEN_EVENT_UPPED_MISS { EVENT: self.0.uid });
-                None
-            }
-        }
-    }
-} // impl WeakEvent
 
 pub fn nonblock(fd: &Fd) -> Result<()> {
     let status = unsafe {
@@ -1013,6 +960,86 @@ macro_rules! DISPLAY_LINK_UID {
         impl std::fmt::Display for $Type {
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 write!(f, "{}", self.0.uid)
+            }
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! DECLARE_LINKS {
+    ($Strong:ident,
+     $Weak:ident,
+     $Body:ty,
+     $UPPED_MISS:ident,
+     $SELF:ident) => {
+        #[derive(Debug)]
+        pub struct $Strong($crate::Link<$Body>);
+
+        impl Downgradable<$Weak> for $Strong {
+            fn downgrade(&self) -> $Weak {
+                $Weak(WeakLink {
+                    uid: self.0.uid,
+                    body: Rc::downgrade(&self.0.body),
+                })
+            }
+        }
+
+        impl std::clone::Clone for $Strong {
+            fn clone(&self) -> Self {
+                Self($crate::Link {
+                    uid: self.0.uid,
+                    body: self.0.body.clone(),
+                })
+            }
+        }
+
+        impl std::fmt::Display for $Strong {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(f, "{}", self.0.uid)
+            }
+        }
+
+        pub struct $Weak($crate::WeakLink<$Body>);
+
+        impl $Weak {
+            pub fn upgrade(&self) -> Option<$Strong> {
+                self.0.body.upgrade().map(|body|
+                                          $Strong($crate::Link {
+                                              uid: self.0.uid,
+                                              body: body,
+                                          }))
+            }
+
+            pub fn upped<F, R>(&self, f: F) -> Option<R>
+            where F: Fn(&$Strong) -> R {
+                match self.upgrade() {
+                    Some(thing) => Some(f(&thing)),
+                    None => {
+                        TRACE!($UPPED_MISS { $SELF: self });
+                        None
+                    }
+                }
+            }
+        }
+
+        impl std::clone::Clone for $Weak {
+            fn clone(&self) -> Self {
+                Self($crate::WeakLink {
+                    uid: self.0.uid,
+                    body: self.0.body.clone(),
+                })
+            }
+        }
+
+        impl std::fmt::Display for $Weak {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(f, "{}", self.0.uid)
+            }
+        }
+
+        impl std::fmt::Debug for $Weak {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}({})", stringify!($Weak), self.0.uid)
             }
         }
     }

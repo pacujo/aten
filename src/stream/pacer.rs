@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::io::Result;
 use std::time::{Instant, Duration};
 
-use crate::{Disk, Link, Action, UID, Timer, error};
+use crate::{Disk, Link, Action, UID, Timer, Downgradable, error};
 use crate::stream::{ByteStream, ByteStreamBody, base};
 use r3::{TRACE, Traceable};
 
@@ -110,10 +110,10 @@ impl Stream {
                 prev_time: disk.now(),
                 retry_timer: None,
                 weak_self: weak_self.clone(),
-        }));
+            }));
         let stream = Stream(Link {
             uid: uid,
-            body: body.clone(),
+            body: body,
         });
         stream.register_wrappee_callback(&wrappee);
         Ok(stream)

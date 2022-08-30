@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::io::{Result, Error};
 use std::os::unix::io::AsRawFd;
 
-use crate::{Disk, Link, Action, UID, Registration, Fd};
+use crate::{Disk, Link, Action, UID, Registration, Fd, Downgradable};
 use crate::stream::{ByteStreamBody, base};
 use r3::{TRACE, Traceable};
 

@@ -4,23 +4,18 @@ use std::cell::RefCell;
 use std::io::Result;
 use std::rc::Rc;
 
-use crate::{Link, WeakLink, UID};
+use crate::{Link, WeakLink, UID, Downgradable, DECLARE_LINKS};
 use r3::{TRACE, Traceable};
 
-pub struct ByteStream(Link<dyn ByteStreamBody>);
+DECLARE_LINKS!(ByteStream, WeakByteStream, dyn DebuggableByteStreamBody,
+               ATEN_BYTESTREAM_UPPED_MISS, STREAM);
 
 impl ByteStream {
-    pub fn new(uid: UID, body: Rc<RefCell<dyn ByteStreamBody>>) -> ByteStream {
+    pub fn new(uid: UID, body: Rc<RefCell<dyn DebuggableByteStreamBody>>)
+               -> ByteStream {
         ByteStream(Link {
             uid: uid,
             body: body,
-        })
-    }
-
-    pub fn downgrade(&self) -> WeakByteStream {
-        WeakByteStream(WeakLink {
-            uid: self.0.uid,
-            body: Rc::downgrade(&self.0.body),
         })
     }
 
@@ -36,46 +31,6 @@ impl ByteStream {
         self.0.body.borrow_mut().unregister_callback();
     }
 } // impl ByteStream
-
-crate::DISPLAY_LINK_UID!(ByteStream);
-
-impl std::clone::Clone for ByteStream {
-    fn clone(&self) -> Self {
-        ByteStream::new(self.0.uid, self.0.body.clone())
-    }
-} // impl std::clone::Clone for ByteStream
-
-impl std::fmt::Debug for ByteStream {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ByteStream")
-            .field("uid", &self.0.uid)
-            .finish()
-    }
-} // impl Debug for ByteStream 
-
-pub struct WeakByteStream(WeakLink<dyn ByteStreamBody>);
-
-crate::DISPLAY_LINK_UID!(WeakByteStream);
-
-impl WeakByteStream {
-    pub fn upgrade(&self) -> Option<ByteStream> {
-        self.0.body.upgrade().map(|body|
-            ByteStream(Link {
-                uid: self.0.uid,
-                body: body,
-            }))
-    }
-
-    pub fn upped<F, R>(&self, f: F) -> Option<R> where F: Fn(&ByteStream) -> R {
-        match self.upgrade() {
-            Some(stream) => Some(f(&stream)),
-            None => {
-                TRACE!(ATEN_BYTESTREAM_UPPED_MISS { STREAM: self });
-                None
-            }
-        }
-    }
-} // impl WeakByteStream
 
 pub trait ByteStreamBody {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize>;
