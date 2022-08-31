@@ -1,4 +1,4 @@
-use std::io::Error;
+use std::io::{Error, ErrorKind};
 
 pub fn badf() -> Error {
     Error::from_raw_os_error(libc::EBADF)
@@ -17,13 +17,9 @@ pub fn proto() -> Error {
 }
 
 pub fn nospc() -> Error {
-    Error::from_raw_os_error(libc::EPROTO)
+    Error::from_raw_os_error(libc::ENOSPC)
 }
 
 pub fn is_again(err: &Error) -> bool {
-    if let Some(errno) = err.raw_os_error() {
-        errno == libc::EAGAIN
-    } else {
-        false
-    }
+    matches!(err.kind(), ErrorKind::WouldBlock)
 }
