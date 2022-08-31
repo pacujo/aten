@@ -12,6 +12,7 @@ use std::io::{Error, Result};
 use std::option::Option;
 use std::os::unix::io::{RawFd, AsRawFd};
 use std::rc::{Rc, Weak};
+use std::sync::Arc;
 use std::time::{Instant, Duration};
 use r3::{TRACE, TRACE_ENABLED, Traceable, errsym};
 
@@ -62,15 +63,15 @@ impl Drop for FdBody {
 } // impl Drop for FdBody
 
 #[derive(Debug)]
-pub struct Fd(Rc<FdBody>);
+pub struct Fd(Arc<FdBody>);
 
 impl Fd {
     pub fn new<R>(fd: R) -> Fd where R: AsRawFd {
-        Fd(Rc::new(FdBody(fd.as_raw_fd())))
+        Fd(Arc::new(FdBody(fd.as_raw_fd())))
     }
 
     pub fn clone(&self) -> Fd {
-        Fd(Rc::clone(&self.0))
+        Fd(Arc::clone(&self.0))
     }
 } // impl Fd
 
