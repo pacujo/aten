@@ -232,7 +232,7 @@ fn is_inprogress(err: &Error) -> bool {
     error::is_again(err)
 }
 
-pub fn socket_pair(disk: &Disk) -> Result<(Duplex, Duplex)> {
+pub fn socket_pair(disk: &Disk) -> Result<((Duplex, Fd), (Duplex, Fd))> {
     let mut pair = [0i32, 0i32];
     let status = unsafe {
         libc::socketpair(libc::PF_UNIX, libc::SOCK_STREAM, 0, &mut pair[0])
@@ -240,7 +240,9 @@ pub fn socket_pair(disk: &Disk) -> Result<(Duplex, Duplex)> {
     if status < 0 {
         Err(Error::last_os_error())
     } else {
-        Ok((Duplex::new(disk, &Fd::new(pair[0]))?,
-            Duplex::new(disk, &Fd::new(pair[1]))?))
+        let fd0 = Fd::new(pair[0]);
+        let fd1 = Fd::new(pair[1]);
+        Ok(((Duplex::new(disk, &fd0)?, fd0),
+            (Duplex::new(disk, &fd1)?, fd1)))
     }
 }
