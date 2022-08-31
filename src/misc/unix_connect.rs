@@ -231,3 +231,16 @@ fn try_connect(socket: &Fd, address: &std::path::Path) -> Result<()> {
 fn is_inprogress(err: &Error) -> bool {
     error::is_again(err)
 }
+
+pub fn socket_pair(disk: &Disk) -> Result<(Duplex, Duplex)> {
+    let mut pair = [0i32, 0i32];
+    let status = unsafe {
+        libc::socketpair(libc::PF_UNIX, libc::SOCK_STREAM, 0, &mut pair[0])
+    };
+    if status < 0 {
+        Err(Error::last_os_error())
+    } else {
+        Ok((Duplex::new(disk, &Fd::new(pair[0]))?,
+            Duplex::new(disk, &Fd::new(pair[1]))?))
+    }
+}
