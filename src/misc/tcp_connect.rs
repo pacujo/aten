@@ -1,6 +1,7 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::io::{Error, Result};
+use std::net::SocketAddr;
 use std::os::unix::io::{AsRawFd};
 
 use crate::{Disk, WeakDisk, Link, WeakLink, UID, Action, Fd, Registration};
@@ -29,7 +30,7 @@ struct TcpProgressBody {
     socket: Option<Fd>,
     state: State,
     registration: Option<Registration>,
-    callback: Option<Action>,
+    callback: Action,
 }
 
 impl TcpProgressBody {
@@ -37,10 +38,10 @@ impl TcpProgressBody {
         if matches!(self.state, State::InProgress) {
             self.state = State::Triggered;
             self.registration.take();
-            if let Some(disk) = self.weak_disk.upgrade() {
+            self.weak_disk.upped(|disk| {
                 TRACE!(ATEN_TCP_PROGRESS_TRIGGERED { PROGRESS: self.uid });
-                disk.execute(self.callback.take().unwrap().clone());
-            };
+                disk.execute(self.callback.clone());
+            });
         } else {
             TRACE!(ATEN_TCP_PROGRESS_TRIGGERED_SPURIOUSLY {
                 PROGRESS: self.uid, STATE: &self.state,
@@ -111,7 +112,7 @@ DECLARE_LINKS!(TcpProgress, WeakTcpProgress, TcpProgressBody,
                ATEN_TCP_PROGRESS_UPPED_MISS, PROGRESS);
 
 impl TcpProgress {
-    pub fn new(disk: &Disk, address: &std::net::SocketAddr, action: Action)
+    pub fn new(disk: &Disk, address: &SocketAddr, action: Action)
                -> Result<TcpProgress> {
         let socket = Self::make_nonblocking_socket(disk, address)?;
         let result = try_connect(&socket, address);
@@ -128,10 +129,13 @@ impl TcpProgress {
         TcpProgress::new_in_progress(disk, address, action, socket)
     }
 
-    fn make_nonblocking_socket(disk: &Disk, address: &std::net::SocketAddr)
-                               -> Result<Fd> {
+    fn make_nonblocking_socket(disk: &Disk, address: &SocketAddr) -> Result<Fd> {
+        let family = match address {
+            SocketAddr::V4(_) => libc::PF_INET,
+            SocketAddr::V6(_) => libc::PF_INET6,
+        };
         let skt = unsafe {
-            libc::socket(libc::PF_INET, libc::SOCK_STREAM, libc::IPPROTO_TCP)
+            libc::socket(family, libc::SOCK_STREAM, libc::IPPROTO_TCP)
         };
         if skt < 0 {
             let err = Error::last_os_error();
@@ -145,8 +149,8 @@ impl TcpProgress {
         Ok(socket)
     }
 
-    fn new_established(disk: &Disk, address: &std::net::SocketAddr,
-                       action: Action, socket: Fd)
+    fn new_established(disk: &Disk, address: &SocketAddr, action: Action,
+                       socket: Fd)
                        -> Result<TcpProgress> {
         let uid = UID::new();
         let body = Rc::new(RefCell::new(TcpProgressBody {
@@ -155,7 +159,7 @@ impl TcpProgress {
             socket: Some(socket.clone()),
             state: State::Established,
             registration: None,
-            callback: None,
+            callback: Action::noop(),
         }));
         TRACE!(ATEN_TCP_PROGRESS_CREATE_ESTABLISHED {
             DISK: disk, PROGRESS: uid, ADDRESS: address, FD: &socket,
@@ -167,8 +171,8 @@ impl TcpProgress {
         }))
     }
 
-    fn new_in_progress(disk: &Disk, address: &std::net::SocketAddr,
-                       action: Action, socket: Fd)
+    fn new_in_progress(disk: &Disk, address: &SocketAddr, action: Action,
+                       socket: Fd)
                        -> Result<TcpProgress> {
         let uid = UID::new();
         let body = TcpProgressBody {
@@ -177,7 +181,7 @@ impl TcpProgress {
             socket: Some(socket.clone()),
             state: State::InProgress,
             registration: None,
-            callback: Some(action),
+            callback: action,
         };
         let progress = TcpProgress(Link {
             uid: uid,
@@ -198,7 +202,7 @@ impl TcpProgress {
         progress.0.body.borrow_mut().registration = Some(result.unwrap());
         TRACE!(ATEN_TCP_PROGRESS_CREATE_IN_PROGRESS {
             DISK: disk, PROGRESS: uid, ADDRESS: address, FD: &socket,
-            ACTION: &progress.0.body.borrow().callback.as_ref().unwrap(),
+            ACTION: &progress.0.body.borrow().callback,
         });
         Ok(progress)
     }
@@ -208,9 +212,9 @@ impl TcpProgress {
     }
 } // impl TcpProgress
 
-fn try_connect(socket: &Fd, address: &std::net::SocketAddr) -> Result<()> {
+fn try_connect(socket: &Fd, address: &SocketAddr) -> Result<()> {
     let status = match address {
-        std::net::SocketAddr::V4(v4) => {
+        SocketAddr::V4(v4) => {
             let addr_bytes = v4.ip().octets();
             let addr4 = libc::sockaddr_in {
                 sin_family: libc::AF_INET as u16,
@@ -231,7 +235,7 @@ fn try_connect(socket: &Fd, address: &std::net::SocketAddr) -> Result<()> {
                 )
             }
         }
-        std::net::SocketAddr::V6(v6) => {
+        SocketAddr::V6(v6) => {
             let addr6 = libc::sockaddr_in6 {
                 sin6_family: libc::AF_INET6 as u16,
                 sin6_port: v6.port().to_be(),

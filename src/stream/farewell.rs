@@ -20,7 +20,7 @@ DECLARE_STREAM_NO_DROP!(
 pub struct StreamBody {
     base: base::StreamBody,
     wrappee: ByteStream,
-    farewell_callback: Option<Action>,
+    farewell_callback: Action,
 }
 
 impl StreamBody {
@@ -32,11 +32,9 @@ impl StreamBody {
 impl Drop for StreamBody {
     fn drop(&mut self) {
         TRACE!(ATEN_FAREWELLSTREAM_DROP { STREAM: self });
-        if let Some(action) = &self.farewell_callback {
-            self.base.get_weak_disk().upped(|disk| {
-                disk.execute(action.clone());
-            });
-        }
+        self.base.get_weak_disk().upped(|disk| {
+            disk.execute(self.farewell_callback.clone());
+        });
     }
 } // impl Drop for StreamBody
 
@@ -51,7 +49,7 @@ impl Stream {
         let body = Rc::new(RefCell::new(StreamBody {
             base: base::StreamBody::new(disk.downgrade(), uid),
             wrappee: wrappee.clone(),
-            farewell_callback: None,
+            farewell_callback: Action::noop(),
         }));
         let stream = Stream(Link {
             uid: uid,
@@ -65,13 +63,13 @@ impl Stream {
         TRACE!(ATEN_FAREWELLSTREAM_REGISTER_FAREWELL_CALLBACK {
             STREAM: self, FAREWELL_CALLBACK: &callback
         });
-        self.0.body.borrow_mut().farewell_callback = Some(callback);
+        self.0.body.borrow_mut().farewell_callback = callback;
     }
 
     pub fn unregister_farewell_callback(&self) {
         TRACE!(ATEN_FAREWELLSTREAM_UNREGISTER_FAREWELL_CALLBACK {
             STREAM: self
         });
-        self.0.body.borrow_mut().farewell_callback = None;
+        self.0.body.borrow_mut().farewell_callback = Action::noop();
     }
 } // impl Stream

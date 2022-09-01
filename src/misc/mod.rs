@@ -11,6 +11,8 @@ pub mod tcp_connect;
 pub use tcp_connect::{TcpProgress, WeakTcpProgress};
 pub mod unix_connect;
 pub use unix_connect::{UnixProgress, WeakUnixProgress};
+pub mod resolver;
+pub use resolver::{Resolver, WeakResolver};
 
 pub fn pipe(disk: &Disk) -> Result<(ByteStream, Fd)> {
     let mut pair = [0i32, 0i32];

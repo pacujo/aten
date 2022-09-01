@@ -7,7 +7,7 @@ use crate::stream::{ByteStreamBody};
 pub struct StreamBody {
     weak_disk: WeakDisk,
     uid: UID,
-    callback: Option<Action>,
+    callback: Action,
 }
 
 impl std::fmt::Display for StreamBody {
@@ -21,7 +21,7 @@ impl StreamBody {
         StreamBody {
             weak_disk: weak_disk,
             uid: uid,
-            callback: None,
+            callback: Action::noop(),
         }
     }
 
@@ -34,11 +34,9 @@ impl StreamBody {
     }
 
     pub fn invoke_callback(&self) {
-        if let Some(action) = self.callback.clone() {
-            self.weak_disk.upped(|disk| {
-                disk.execute(action.clone());
-            });
-        }
+        self.weak_disk.upped(|disk| {
+            disk.execute(self.callback.clone());
+        });
     }
 } // impl StreamBody
 
@@ -55,10 +53,10 @@ impl ByteStreamBody for StreamBody {
         self.get_weak_disk().upped(
             |disk| { disk.execute(callback.clone()); }
         );
-        self.callback = Some(callback);
+        self.callback = callback;
     }
 
     fn unregister_callback(&mut self) {
-        self.callback = None;
+        self.callback = Action::noop();
     }
 } // impl ByteStreamBody for StreamBody

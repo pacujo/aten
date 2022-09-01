@@ -31,7 +31,7 @@ pub struct LingerBody {
     buf: Vec<u8>,
     cursor: usize,
     length: usize,
-    callback: Option<Action>,
+    callback: Action,
     state: State,
     self_ref: Option<Rc<RefCell<LingerBody>>>,
     registration: Option<Registration>,
@@ -48,10 +48,8 @@ impl LingerBody {
             self.consume();
         } else {
             self.state = State::Final(result);
-            if let Some(action) = self.callback.clone() {
-                let weak_disk = &self.weak_disk;
-                weak_disk.upped(|disk| { disk.execute(action.clone()); });
-            }
+            let weak_disk = &self.weak_disk;
+            weak_disk.upped(|disk| { disk.execute(self.callback.clone()); });
         }
     }
 
@@ -103,7 +101,7 @@ impl Linger {
             buf: vec![0; BUF_SIZE],
             cursor: 0,
             length: 0,
-            callback: None,
+            callback: Action::noop(),
             state: State::Busy,
             self_ref: None,
             registration: None,
@@ -142,39 +140,39 @@ impl Linger {
 
     pub fn register_callback(&self, callback: Action) {
         TRACE!(ATEN_LINGER_REGISTER_CALLBACK {
-            LINGER: self.0.uid, CALLBACK: &callback
+            LINGER: self, CALLBACK: &callback
         });
-        self.0.body.borrow_mut().callback = Some(callback);
+        self.0.body.borrow_mut().callback = callback;
     }
 
     pub fn unregister_callback(&self) {
-        TRACE!(ATEN_LINGER_UNREGISTER_CALLBACK { LINGER: self.0.uid });
-        self.0.body.borrow_mut().callback = None;
+        TRACE!(ATEN_LINGER_UNREGISTER_CALLBACK { LINGER: self });
+        self.0.body.borrow_mut().callback = Action::noop();
     }
 
     pub fn poll(&self) -> State {
         let mut body = self.0.body.borrow_mut();
         match &body.state {
             State::Busy => {
-                TRACE!(ATEN_LINGER_POLL_BUSY { LINGER: self.0.uid });
+                TRACE!(ATEN_LINGER_POLL_BUSY { LINGER: self });
                 State::Busy
             }
             State::Drifting => {
-                TRACE!(ATEN_LINGER_POLL_DRIFTING { LINGER: self.0.uid });
+                TRACE!(ATEN_LINGER_POLL_DRIFTING { LINGER: self });
                 State::Drifting
             }
             State::Stale => {
-                TRACE!(ATEN_LINGER_POLL_STALE { LINGER: self.0.uid });
+                TRACE!(ATEN_LINGER_POLL_STALE { LINGER: self });
                 State::Stale
             }
             State::Final(Err(err)) => {
                 TRACE!(ATEN_LINGER_POLL_FAIL {
-                    LINGER: self.0.uid, ERR: r3::errsym(&err)
+                    LINGER: self, ERR: r3::errsym(&err)
                 });
                 body.consume()
             }
             State::Final(_) => {
-                TRACE!(ATEN_LINGER_POLL_FINAL { LINGER: self.0.uid });
+                TRACE!(ATEN_LINGER_POLL_FINAL { LINGER: self });
                 body.consume()
             }
         }
@@ -184,21 +182,21 @@ impl Linger {
         let state = self.0.body.borrow_mut().consume();
         match &state {
             State::Busy => {
-                TRACE!(ATEN_LINGER_ABORT_BUSY { LINGER: self.0.uid });
+                TRACE!(ATEN_LINGER_ABORT_BUSY { LINGER: self });
             }
             State::Drifting => {
-                TRACE!(ATEN_LINGER_ABORT_DRIFTING { LINGER: self.0.uid });
+                TRACE!(ATEN_LINGER_ABORT_DRIFTING { LINGER: self });
             }
             State::Stale => {
-                TRACE!(ATEN_LINGER_ABORT_STALE { LINGER: self.0.uid });
+                TRACE!(ATEN_LINGER_ABORT_STALE { LINGER: self });
             }
             State::Final(Err(err)) => {
                 TRACE!(ATEN_LINGER_ABORT_FAIL {
-                    LINGER: self.0.uid, ERR: r3::errsym(&err)
+                    LINGER: self, ERR: r3::errsym(&err)
                 });
             }
             State::Final(_) => {
-                TRACE!(ATEN_LINGER_ABORT_FINAL { LINGER: self.0.uid });
+                TRACE!(ATEN_LINGER_ABORT_FINAL { LINGER: self });
             }
         }
         state
@@ -210,7 +208,7 @@ impl Linger {
 
     fn jockey(&self) {
         if !matches!(self.0.body.borrow().state, State::Busy) {
-            TRACE!(ATEN_LINGER_JOCKEY_SPURIOUS { LINGER: self.0.uid });
+            TRACE!(ATEN_LINGER_JOCKEY_SPURIOUS { LINGER: self });
             return;
         }
         let mut body = self.0.body.borrow_mut();
@@ -225,8 +223,7 @@ impl Linger {
                 if count < 0 {
                     let err = Error::last_os_error();
                     TRACE!(ATEN_LINGER_JOCKEY_WRITE_FAIL {
-                        LINGER: self.0.uid, WANT: slice.len(),
-                        ERR: r3::errsym(&err),
+                        LINGER: self, WANT: slice.len(), ERR: r3::errsym(&err),
                     });
                     if !error::is_again(&err) {
                         body.done(Err(err));
@@ -234,15 +231,13 @@ impl Linger {
                     return;
                 }
                 TRACE!(ATEN_LINGER_JOCKEY_WRITE {
-                    LINGER: self.0.uid, WANT: slice.len(), GOT: count,
+                    LINGER: self, WANT: slice.len(), GOT: count,
                 });
                 TRACE!(ATEN_LINGER_JOCKEY_WRITE_DUMP {
-                    LINGER: self.0.uid,
-                    DATA: r3::octets(&slice[..count as usize]),
+                    LINGER: self, DATA: r3::octets(&slice[..count as usize]),
                 });
                 TRACE!(ATEN_LINGER_JOCKEY_WRITE_TEXT {
-                    LINGER: self.0.uid,
-                    TEXT: r3::text(&slice[..count as usize]),
+                    LINGER: self, TEXT: r3::text(&slice[..count as usize]),
                 });
                 assert!(count > 0);
                 body.cursor += count as usize;
@@ -250,7 +245,7 @@ impl Linger {
             match body.replenish() {
                 Ok(count) => {
                     TRACE!(ATEN_LINGER_JOCKEY_REPLENISH {
-                        LINGER: self.0.uid, GOT: count,
+                        LINGER: self, GOT: count,
                     });
                     if count == 0 {
                         body.done(Ok(()));
@@ -262,7 +257,7 @@ impl Linger {
                 }
                 Err(err) => {
                     TRACE!(ATEN_LINGER_JOCKEY_REPLENISH_FAIL {
-                        LINGER: self.0.uid, ERR: r3::errsym(&err),
+                        LINGER: self, ERR: r3::errsym(&err),
                     });
                     if error::is_again(&err) {
                         body.cursor = body.length;

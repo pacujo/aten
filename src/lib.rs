@@ -29,6 +29,10 @@ impl Action {
         Action::new(move || {})
     }
 
+    pub fn gut(&mut self) -> Action {
+        std::mem::replace(self, Self::noop())
+    }
+
     pub fn perform(&self) {
         (self.0)();
     }
@@ -112,7 +116,7 @@ struct TimerBody {
     expires: Instant,
     uid: UID,
     kind: TimerKind,
-    action: Option<Action>,
+    action: Action,
     stack_trace: Option<String>,
 }
 
@@ -260,7 +264,7 @@ impl Disk {
             expires: expires,
             uid: uid,
             kind: kind,
-            action: Some(action),
+            action: action,
             stack_trace: stack_trace,
         }));
         let uid = timer_ref.borrow().uid;
@@ -311,7 +315,7 @@ impl Disk {
             weak_disk: self.downgrade(),
             uid: event_uid,
             state: EventState::Idle,
-            action: Some(action),
+            action: action,
             stack_trace: stack_trace,
         };
         Event(Link {
@@ -365,30 +369,28 @@ impl Disk {
                             });
                             continue
                         }
-                        if let Some(action) = timer_body.action.take() {
-                            TRACE!(ATEN_DISK_POLL_TIMEOUT {
-                                DISK: self, TIMER: timer_body.uid,
-                                ACTION: &action,
-                            });
-                            if TRACE_ENABLED!(ATEN_DISK_TIMER_BT) {
-                                if let Some(stack) = &timer_body.stack_trace {
-                                    TRACE!(ATEN_DISK_TIMER_BT {
-                                        DISK: self, TIMER: timer_body.uid,
-                                        BT: stack,
-                                    })
-                                }
+                        let action = timer_body.action.gut();
+                        TRACE!(ATEN_DISK_POLL_TIMEOUT {
+                            DISK: self, TIMER: timer_body.uid,
+                            ACTION: &action,
+                        });
+                        if TRACE_ENABLED!(ATEN_DISK_TIMER_BT) {
+                            if let Some(stack) = &timer_body.stack_trace {
+                                TRACE!(ATEN_DISK_TIMER_BT {
+                                    DISK: self, TIMER: timer_body.uid,
+                                    BT: stack,
+                                })
                             }
-                            return PoppedTimer::TimerExpired(action);
                         }
+                        return PoppedTimer::TimerExpired(action);
                     }
                     unreachable!();
                 }
                 NextStep::TimerExpired(expires, uid) => {
                     let mut body = self.mut_body();
                     if let Some(rc) = body.timers.remove(&(expires, uid)) {
-                        if let Some(action) = rc.borrow_mut().action.take() {
-                            return PoppedTimer::TimerExpired(action);
-                        }
+                        return PoppedTimer::TimerExpired(
+                            rc.borrow_mut().action.gut());
                     }
                     unreachable!();
                 }
@@ -830,7 +832,7 @@ struct EventBody {
     weak_disk: WeakDisk,
     uid: UID,
     state: EventState,
-    action: Option<Action>,
+    action: Action,
     stack_trace: Option<String>,
 }
 
@@ -856,11 +858,7 @@ impl EventBody {
             EventState::Idle => { unreachable!(); }
             EventState::Triggered => {
                 self.set_state(EventState::Idle);
-                if let Some(action) = self.action.take() {
-                    action.perform();
-                } else {
-                    unreachable!();
-                }
+                self.action.perform();
             }
             EventState::Canceled => {
                 self.set_state(EventState::Idle);

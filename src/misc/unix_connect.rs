@@ -29,7 +29,7 @@ struct UnixProgressBody {
     socket: Option<Fd>,
     state: State,
     registration: Option<Registration>,
-    callback: Option<Action>,
+    callback: Action,
 }
 
 impl UnixProgressBody {
@@ -39,7 +39,7 @@ impl UnixProgressBody {
             self.registration.take();
             if let Some(disk) = self.weak_disk.upgrade() {
                 TRACE!(ATEN_UNIX_PROGRESS_TRIGGERED { PROGRESS: self.uid });
-                disk.execute(self.callback.take().unwrap().clone());
+                disk.execute(self.callback.clone());
             };
         } else {
             TRACE!(ATEN_UNIX_PROGRESS_TRIGGERED_SPURIOUSLY {
@@ -156,7 +156,7 @@ impl UnixProgress {
             socket: Some(socket.clone()),
             state: State::Established,
             registration: None,
-            callback: None,
+            callback: Action::noop(),
         }));
         TRACE!(ATEN_UNIX_PROGRESS_CREATE_ESTABLISHED {
             DISK: disk, PROGRESS: uid, ADDRESS: address.to_string_lossy(),
@@ -179,7 +179,7 @@ impl UnixProgress {
             socket: Some(socket.clone()),
             state: State::InProgress,
             registration: None,
-            callback: Some(action),
+            callback: action,
         };
         let progress = UnixProgress(Link {
             uid: uid,
@@ -201,8 +201,7 @@ impl UnixProgress {
         progress.0.body.borrow_mut().registration = Some(result.unwrap());
         TRACE!(ATEN_UNIX_PROGRESS_CREATE_IN_PROGRESS {
             DISK: disk, PROGRESS: uid, ADDRESS: address.to_string_lossy(),
-            FD: &socket,
-            ACTION: &progress.0.body.borrow().callback.as_ref().unwrap(),
+            FD: &socket, ACTION: &progress.0.body.borrow().callback,
         });
         Ok(progress)
     }
