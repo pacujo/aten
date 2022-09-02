@@ -974,11 +974,11 @@ macro_rules! DECLARE_LINKS {
         #[derive(Debug)]
         pub struct $Strong($crate::Link<$Body>);
 
-        impl Downgradable<$Weak> for $Strong {
+        impl $crate::Downgradable<$Weak> for $Strong {
             fn downgrade(&self) -> $Weak {
-                $Weak(WeakLink {
+                $Weak($crate::WeakLink {
                     uid: self.0.uid,
-                    body: Rc::downgrade(&self.0.body),
+                    body: std::rc::Rc::downgrade(&self.0.body),
                 })
             }
         }
@@ -1014,7 +1014,9 @@ macro_rules! DECLARE_LINKS {
                 match self.upgrade() {
                     Some(thing) => Some(f(&thing)),
                     None => {
-                        TRACE!($UPPED_MISS { $SELF: self });
+                        r3::TRACE!($UPPED_MISS {
+                            $SELF: self as &dyn r3::Traceable
+                        });
                         None
                     }
                 }

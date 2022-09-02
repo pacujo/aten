@@ -4,8 +4,7 @@ use std::cell::RefCell;
 use std::io::Result;
 use std::rc::Rc;
 
-use crate::{Link, WeakLink, UID, Downgradable, DECLARE_LINKS};
-use r3::{TRACE, Traceable};
+use crate::{Link, UID, DECLARE_LINKS};
 
 DECLARE_LINKS!(ByteStream, WeakByteStream, dyn DebuggableByteStreamBody,
                ATEN_BYTESTREAM_UPPED_MISS, STREAM);
@@ -40,6 +39,35 @@ pub trait ByteStreamBody {
 
 pub trait DebuggableByteStreamBody: ByteStreamBody + std::fmt::Debug {}
 
+DECLARE_LINKS!(ByteStreamPair, WeakByteStreamPair,
+               dyn DebuggableByteStreamPairBody,
+               ATEN_BYTESTREAM_PAIR_UPPED_MISS, STREAM_PAIR);
+
+impl ByteStreamPair {
+    pub fn new(uid: UID, body: Rc<RefCell<dyn DebuggableByteStreamPairBody>>)
+               -> ByteStreamPair {
+        ByteStreamPair(Link {
+            uid: uid,
+            body: body,
+        })
+    }
+
+    pub fn get_ingress(&self) -> Option<ByteStream> {
+        self.0.body.borrow().get_ingress()
+    }
+
+    pub fn set_egress(&self, egress: ByteStream) {
+        self.0.body.borrow_mut().set_egress(egress);
+    }
+} // impl ByteStreamPair
+
+pub trait ByteStreamPairBody {
+    fn get_ingress(&self) -> Option<ByteStream>;
+    fn set_egress(&mut self, egress: ByteStream);
+}
+
+pub trait DebuggableByteStreamPairBody: ByteStreamPairBody + std::fmt::Debug {}
+
 #[macro_export]
 macro_rules! DECLARE_STREAM {
     ($ATEN_STREAM_DROP:ident,
@@ -49,7 +77,6 @@ macro_rules! DECLARE_STREAM {
      $ATEN_STREAM_READ_TRIVIAL:ident,
      $ATEN_STREAM_READ:ident,
      $ATEN_STREAM_READ_DUMP:ident,
-     $ATEN_STREAM_READ_TEXT:ident,
      $ATEN_STREAM_READ_FAIL:ident) => {
         DECLARE_STREAM_DROP!($ATEN_STREAM_DROP);
         DECLARE_STREAM_NO_DROP!($ATEN_STREAM_UPPED_MISS,
@@ -58,7 +85,6 @@ macro_rules! DECLARE_STREAM {
                                 $ATEN_STREAM_READ_TRIVIAL,
                                 $ATEN_STREAM_READ,
                                 $ATEN_STREAM_READ_DUMP,
-                                $ATEN_STREAM_READ_TEXT,
                                 $ATEN_STREAM_READ_FAIL);
     }
 }
@@ -82,10 +108,12 @@ macro_rules! DECLARE_STREAM_NO_DROP {
      $ATEN_STREAM_READ_TRIVIAL:ident,
      $ATEN_STREAM_READ:ident,
      $ATEN_STREAM_READ_DUMP:ident,
-     $ATEN_STREAM_READ_TEXT:ident,
      $ATEN_STREAM_READ_FAIL:ident) => {
-        impl crate::stream::ByteStreamBody for StreamBody {
-            fn register_callback(&mut self, callback: crate::Action) {
+        $crate::DECLARE_LINKS!(Stream, WeakStream, StreamBody,
+                               $ATEN_STREAM_UPPED_MISS, STREAM);
+
+        impl $crate::stream::ByteStreamBody for StreamBody {
+            fn register_callback(&mut self, callback: $crate::Action) {
                 TRACE!($ATEN_STREAM_REGISTER_CALLBACK {
                     STREAM: self, CALLBACK: &callback
                 });
@@ -112,9 +140,6 @@ macro_rules! DECLARE_STREAM_NO_DROP {
                         TRACE!($ATEN_STREAM_READ_DUMP {
                             STREAM: self, DATA: r3::octets(&buf[..count])
                         });
-                        TRACE!($ATEN_STREAM_READ_TEXT {
-                            STREAM: self, TEXT: r3::text(&buf[..count])
-                        });
                         Ok(count)
                     }
                     Err(err) => {
@@ -133,43 +158,13 @@ macro_rules! DECLARE_STREAM_NO_DROP {
             }
         }
 
-        impl crate::stream::DebuggableByteStreamBody for StreamBody {}
+        impl $crate::stream::DebuggableByteStreamBody for StreamBody {}
 
-        #[derive(Debug)]
-        pub struct Stream(crate::Link<StreamBody>);
-
-        impl From<Stream> for crate::stream::ByteStream {
-            fn from(stream: Stream) -> crate::stream::ByteStream {
+        impl From<Stream> for $crate::stream::ByteStream {
+            fn from(stream: Stream) -> $crate::stream::ByteStream {
                 stream.as_bytestream()
             }
         }
-
-        #[derive(Debug)]
-        pub struct WeakStream(crate::WeakLink<StreamBody>);
-
-        impl WeakStream {
-            pub fn upgrade(&self) -> Option<Stream> {
-                self.0.body.upgrade().map(|body|
-                                          Stream(Link {
-                                              uid: self.0.uid,
-                                              body: body,
-                                          }))
-            }
-
-            pub fn upped<F, R>(&self, f: F) -> Option<R>
-            where F: Fn(&Stream) -> R {
-                match self.upgrade() {
-                    Some(stream) => Some(f(&stream)),
-                    None => {
-                        TRACE!($ATEN_STREAM_UPPED_MISS { STREAM: self });
-                        None
-                    }
-                }
-            }
-        }
-
-        crate::DISPLAY_LINK_UID!(Stream);
-        crate::DISPLAY_LINK_UID!(WeakStream);
     }
 }
 
@@ -180,22 +175,22 @@ macro_rules! IMPL_STREAM {
             self.0.body.borrow().base.invoke_callback();
         }
 
-        pub fn as_bytestream(&self) -> crate::stream::ByteStream {
-            crate::stream::ByteStream::new(self.0.uid, self.0.body.clone())
+        pub fn as_bytestream(&self) -> $crate::stream::ByteStream {
+            $crate::stream::ByteStream::new(self.0.uid, self.0.body.clone())
         }
 
-        pub fn downgrade(&self) -> WeakStream {
-            WeakStream(crate::WeakLink {
-                uid: self.0.uid,
-                body: std::rc::Rc::downgrade(&self.0.body),
-            })
-        }
+//        pub fn downgrade(&self) -> WeakStream {
+//            WeakStream($crate::WeakLink {
+//                uid: self.0.uid,
+//                body: std::rc::Rc::downgrade(&self.0.body),
+//            })
+//        }
 
         pub fn read(&self, buf: &mut [u8]) -> std::io::Result<usize> {
             self.0.body.borrow_mut().read(buf)
         }
 
-        pub fn register_callback(&self, callback: crate::Action) {
+        pub fn register_callback(&self, callback: $crate::Action) {
             self.0.body.borrow_mut().register_callback(callback);
         }
 
@@ -204,9 +199,9 @@ macro_rules! IMPL_STREAM {
         }
 
         pub fn register_wrappee_callback(
-            &self, wrappee: &crate::stream::ByteStream) {
+            &self, wrappee: &$crate::stream::ByteStream) {
             let weak_stream = self.downgrade();
-            wrappee.register_callback(crate::Action::new(move || {
+            wrappee.register_callback($crate::Action::new(move || {
                 weak_stream.upped(|stream| {
                     stream.invoke_callback();
                 });

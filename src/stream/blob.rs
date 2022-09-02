@@ -14,7 +14,6 @@ DECLARE_STREAM!(
     ATEN_BLOBSTREAM_READ_TRIVIAL,
     ATEN_BLOBSTREAM_READ,
     ATEN_BLOBSTREAM_READ_DUMP,
-    ATEN_BLOBSTREAM_READ_TEXT,
     ATEN_BLOBSTREAM_READ_FAIL);
 
 #[derive(Debug)]
@@ -45,9 +44,6 @@ impl Stream {
         });
         TRACE!(ATEN_BLOBSTREAM_CREATE_DUMP {
             STREAM: uid, DATA: r3::octets(&blob)
-        });
-        TRACE!(ATEN_BLOBSTREAM_CREATE_TEXT {
-            STREAM: uid, TEXT: r3::text(&blob)
         });
         let body = StreamBody {
             base: base::StreamBody::new(disk.downgrade(), uid),

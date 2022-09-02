@@ -2,9 +2,10 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::io::Result;
 
-use crate::{Disk, WeakDisk, Link, WeakLink, UID, Action, Registration, Fd};
+use crate::{Disk, WeakDisk, Link, UID, Action, Registration, Fd};
 use crate::{Downgradable, DECLARE_LINKS};
-use crate::stream::{ByteStream, switch, file, dry, empty};
+use crate::stream::{ByteStream, ByteStreamPair, ByteStreamPairBody};
+use crate::stream::{DebuggableByteStreamPairBody, switch, file, dry, empty};
 use crate::misc::Linger;
 use r3::{TRACE, Traceable};
 
@@ -50,6 +51,20 @@ impl std::fmt::Display for DuplexBody {
     }
 } // impl std::fmt::Display for StreamBody
 
+impl ByteStreamPairBody for DuplexBody {
+    fn get_ingress(&self) -> Option<ByteStream> {
+        self.ingress.as_ref().map(|s| s.as_bytestream())
+    }
+
+    fn set_egress(&mut self, egress: ByteStream) {
+        if let Some(eswitch) = &self.eswitch {
+            eswitch.switch(egress);
+        }
+    }
+} // impl ByteStreamPairBody for DuplexBody
+
+impl DebuggableByteStreamPairBody for DuplexBody {}
+
 DECLARE_LINKS!(Duplex, WeakDuplex, DuplexBody, ATEN_DUPLEX_UPPED_MISS, DUPLEX);
 
 impl Duplex {
@@ -93,13 +108,15 @@ impl Duplex {
     }
 
     pub fn get_ingress(&self) -> Option<ByteStream> {
-        self.0.body.borrow().ingress.as_ref().map(|s| s.as_bytestream())
+        self.0.body.borrow().get_ingress()
     }
 
     pub fn set_egress(&self, egress: ByteStream) {
-        if let Some(eswitch) = &self.0.body.borrow_mut().eswitch {
-            eswitch.switch(egress);
-        }
+        self.0.body.borrow_mut().set_egress(egress);
+    }
+
+    pub fn as_bytestream_pair(&self) -> ByteStreamPair {
+        ByteStreamPair::new(self.0.uid, self.0.body.clone())
     }
 
     fn notify(&self) {

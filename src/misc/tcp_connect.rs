@@ -4,9 +4,10 @@ use std::io::{Error, Result};
 use std::net::SocketAddr;
 use std::os::unix::io::{AsRawFd};
 
-use crate::{Disk, WeakDisk, Link, WeakLink, UID, Action, Fd, Registration};
+use crate::{Disk, WeakDisk, Link, UID, Action, Fd, Registration};
 use crate::{Downgradable, nonblock, error, DECLARE_LINKS};
 use crate::misc::duplex::Duplex;
+use crate::stream::ByteStreamPair;
 use r3::{TRACE, Traceable};
 
 #[derive(Debug)]
@@ -49,7 +50,7 @@ impl TcpProgressBody {
         }
     }
 
-    fn take(&mut self) -> Result<Duplex> {
+    fn take(&mut self) -> Result<ByteStreamPair> {
         match self.state {
             State::InProgress => {
                 Err(error::again())
@@ -63,6 +64,7 @@ impl TcpProgressBody {
                 match self.weak_disk.upgrade() {
                     Some(disk) => {
                         Duplex::new(&disk, &self.socket.take().unwrap())
+                            .map(|dup| dup.as_bytestream_pair())
                     }
                     None => {
                         Err(error::badf())
@@ -75,7 +77,7 @@ impl TcpProgressBody {
         }
     }
 
-    fn get_socket_status(&mut self) -> Result<Duplex> {
+    fn get_socket_status(&mut self) -> Result<ByteStreamPair> {
         let mut errno = 0i32;
         let mut errlen = std::mem::size_of_val(&errno) as libc::socklen_t;
         let status = unsafe {
@@ -92,6 +94,7 @@ impl TcpProgressBody {
                 match self.weak_disk.upgrade() {
                     Some(disk) => {
                         Duplex::new(&disk, &self.socket.take().unwrap())
+                            .map(|dup| dup.as_bytestream_pair())
                     }
                     None => {
                         Err(error::badf())
@@ -207,7 +210,7 @@ impl TcpProgress {
         Ok(progress)
     }
 
-    pub fn take(&self) -> Result<Duplex> {
+    pub fn take(&self) -> Result<ByteStreamPair> {
         self.0.body.borrow_mut().take()
     }
 } // impl TcpProgress

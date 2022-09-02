@@ -3,8 +3,9 @@ use std::cell::RefCell;
 use std::io::{Error, Result};
 use std::os::unix::io::{AsRawFd};
 
-use crate::{Disk, WeakDisk, Link, WeakLink, UID, Action, Fd, Registration};
+use crate::{Disk, WeakDisk, Link, UID, Action, Fd, Registration};
 use crate::{Downgradable, nonblock, error, DECLARE_LINKS};
+use crate::stream::ByteStreamPair;
 use crate::misc::duplex::Duplex;
 use r3::{TRACE, Traceable};
 
@@ -48,7 +49,7 @@ impl UnixProgressBody {
         }
     }
 
-    fn take(&mut self) -> Result<Duplex> {
+    fn take(&mut self) -> Result<ByteStreamPair> {
         match self.state {
             State::InProgress => {
                 Err(error::again())
@@ -62,6 +63,7 @@ impl UnixProgressBody {
                 match self.weak_disk.upgrade() {
                     Some(disk) => {
                         Duplex::new(&disk, &self.socket.take().unwrap())
+                            .map(|dup| dup.as_bytestream_pair())
                     }
                     None => {
                         Err(error::badf())
@@ -74,7 +76,7 @@ impl UnixProgressBody {
         }
     }
 
-    fn get_socket_status(&mut self) -> Result<Duplex> {
+    fn get_socket_status(&mut self) -> Result<ByteStreamPair> {
         let mut errno = 0i32;
         let mut errlen = std::mem::size_of_val(&errno) as libc::socklen_t;
         let status = unsafe {
@@ -91,6 +93,7 @@ impl UnixProgressBody {
                 match self.weak_disk.upgrade() {
                     Some(disk) => {
                         Duplex::new(&disk, &self.socket.take().unwrap())
+                            .map(|dup| dup.as_bytestream_pair())
                     }
                     None => {
                         Err(error::badf())
@@ -206,7 +209,7 @@ impl UnixProgress {
         Ok(progress)
     }
 
-    pub fn take(&self) -> Result<Duplex> {
+    pub fn take(&self) -> Result<ByteStreamPair> {
         self.0.body.borrow_mut().take()
     }
 } // impl UnixProgress
@@ -231,7 +234,8 @@ fn is_inprogress(err: &Error) -> bool {
     error::is_again(err)
 }
 
-pub fn socket_pair(disk: &Disk) -> Result<((Duplex, Fd), (Duplex, Fd))> {
+pub fn socket_pair(disk: &Disk)
+                   -> Result<((ByteStreamPair, Fd), (ByteStreamPair, Fd))> {
     let mut pair = [0i32, 0i32];
     let status = unsafe {
         libc::socketpair(libc::PF_UNIX, libc::SOCK_STREAM, 0, &mut pair[0])
@@ -241,7 +245,7 @@ pub fn socket_pair(disk: &Disk) -> Result<((Duplex, Fd), (Duplex, Fd))> {
     } else {
         let fd0 = Fd::new(pair[0]);
         let fd1 = Fd::new(pair[1]);
-        Ok(((Duplex::new(disk, &fd0)?, fd0),
-            (Duplex::new(disk, &fd1)?, fd1)))
+        Ok(((Duplex::new(disk, &fd0)?.as_bytestream_pair(), fd0),
+            (Duplex::new(disk, &fd1)?.as_bytestream_pair(), fd1)))
     }
 }

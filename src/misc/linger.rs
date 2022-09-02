@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::io::{Error, Result};
 use std::os::unix::io::AsRawFd;
 
-use crate::{Disk, WeakDisk, Link, WeakLink, UID, Action, Registration, Fd};
+use crate::{Disk, WeakDisk, Link, UID, Action, Registration, Fd};
 use crate::{Downgradable, error, DECLARE_LINKS};
 use crate::stream::ByteStream;
 use r3::{TRACE, Traceable};
@@ -235,9 +235,6 @@ impl Linger {
                 });
                 TRACE!(ATEN_LINGER_JOCKEY_WRITE_DUMP {
                     LINGER: self, DATA: r3::octets(&slice[..count as usize]),
-                });
-                TRACE!(ATEN_LINGER_JOCKEY_WRITE_TEXT {
-                    LINGER: self, TEXT: r3::text(&slice[..count as usize]),
                 });
                 assert!(count > 0);
                 body.cursor += count as usize;
