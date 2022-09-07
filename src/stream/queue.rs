@@ -1,10 +1,10 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::LinkedList;
-use std::io::{Result, Error};
+use std::io::{Result, Error, Write};
 
 use crate::{Disk, Link, UID, Downgradable, error};
-use crate::stream::{ByteStream, ByteStreamBody, base};
+use crate::stream::{ByteStream, ByteStreamBody, base, blob};
 use r3::{TRACE, Traceable};
 
 DECLARE_STREAM!(
@@ -17,11 +17,11 @@ DECLARE_STREAM!(
     ATEN_QUEUESTREAM_READ_DUMP,
     ATEN_QUEUESTREAM_READ_FAIL);
 
-#[derive(Debug)]
 pub struct StreamBody {
     base: base::StreamBody,
     queue: LinkedList<ByteStream>,
     terminated: bool,
+    supplier: Option<Rc<RefCell<dyn Supplier>>>,
     exhausted: bool,
     pending_error: Option<Error>,
     notification_expected: bool,
@@ -69,15 +69,33 @@ impl StreamBody {
     }
 }
 
+impl std::fmt::Debug for StreamBody {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("queue::Stream")
+         .field("base", &self.base)
+         .field("queue", &self.queue)
+         .field("terminated", &self.terminated)
+         .field("supplier", &self.supplier.is_some())
+         .field("exhausted", &self.exhausted)
+         .field("pending_error", &self.pending_error)
+         .field("notification_expected", &self.notification_expected)
+         .finish()
+    }
+} // impl std::fmt::Debug for StreamBody
+
+pub trait Supplier {}
+
 impl Stream {
     IMPL_STREAM!();
 
-    pub fn new(disk: &Disk) -> Stream {
+    pub fn new(disk: &Disk, supplier: Option<Rc<RefCell<dyn Supplier>>>)
+               -> Stream {
         let uid = UID::new();
         TRACE!(ATEN_QUEUESTREAM_CREATE { DISK: disk, STREAM: uid });
         let body = Rc::new(RefCell::new(StreamBody {
             base: base::StreamBody::new(disk.downgrade(), uid),
             queue: LinkedList::new(),
+            supplier: supplier,
             terminated: false,
             exhausted: false,
             pending_error: None,
@@ -105,7 +123,29 @@ impl Stream {
 
     pub fn terminate(&self) {
         assert!(!self.0.body.borrow().terminated);
-        self.0.body.borrow_mut().terminated = true;        
+        self.0.body.borrow_mut().terminated = true;
+        self.0.body.borrow_mut().supplier = None;
         self.invoke_callback();
     }
 } // impl Stream
+
+impl Write for Stream {
+    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+        let weak_disk = self.0.body.borrow().base.get_weak_disk().clone();
+        match weak_disk.upgrade() {
+            Some(disk) => {
+                let count = buf.len();
+                self.enqueue(
+                    blob::Stream::new(&disk, buf.to_vec()).as_bytestream());
+                Ok(count)
+            }
+            None => {
+                Err(error::badf())
+            }
+        }
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        Err(error::inval())
+    }
+}
