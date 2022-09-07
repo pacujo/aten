@@ -2,6 +2,7 @@ use std::io::Result;
 
 use crate::{WeakDisk, UID, Action, error};
 use crate::stream::{ByteStreamBody};
+use r3::{TRACE, Traceable};
 
 #[derive(Debug)]
 pub struct StreamBody {
@@ -35,6 +36,7 @@ impl StreamBody {
 
     pub fn invoke_callback(&self) {
         self.weak_disk.upped(|disk| {
+            TRACE!(ATEN_BASESTREAM_INVOKE_CALLBACK { STREAM: self.uid });
             disk.execute(self.callback.clone());
         });
     }
