@@ -18,50 +18,72 @@ use r3::{TRACE, TRACE_ENABLED, Traceable, errsym};
 
 pub type UID = r3::UID;
 
-pub struct Action(Rc<Box<dyn Fn() + 'static>>);
+pub struct Action {
+    pub uid: UID,
+    pub f: Rc<Box<dyn Fn() + 'static>>,
+}
 
 impl Action {
     pub fn new<F>(f: F) -> Action where F: Fn() + 'static {
-        Action(Rc::new(Box::new(f)))
+        let uid = UID::new();
+        Action {
+            uid: uid,
+            f: Rc::new(Box::new(f)),
+        }
     }
 
     pub fn noop() -> Action {
-        Action::new(move || {})
+        Action {
+            uid: UID::new(),
+            f: Rc::new(Box::new(move || {})),
+        }
     }
 
     pub fn gut(&mut self) -> Action {
-        std::mem::replace(self, Self::noop())
+        let uid = self.uid;
+        TRACE!(ATEN_ACTION_GUT { ACTION: uid });
+        Action {
+            uid: UID::new(),
+            f: std::mem::replace(&mut self.f, Rc::new(Box::new(move || {
+                TRACE!(ATEN_ACTION_GUTTED { ACTION: uid });
+            }))),
+        }
     }
 
     pub fn perform(&self) {
-        (self.0)();
+        TRACE!(ATEN_ACTION_PERFORM { ACTION: self.uid });
+        (self.f)();
     }
 } // impl Action
 
 impl ToString for Action {
     fn to_string(&self) -> String {
-        format!("{:p}", self.0)
+        format!("{}", self.uid)
     }
 } // impl ToString for Action
 
 impl Clone for Action {
     fn clone(&self) -> Action {
-        Action(Rc::clone(&self.0))
+        Action {
+            uid: self.uid,
+            f: Rc::clone(&self.f),
+        }
     }
 } // impl Clone for Action
 
 impl std::fmt::Debug for Action {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:p}", self.0)
+        write!(f, "{}", self.uid)
     }
 } // impl std::fmt::Debug for Action
 
 #[derive(Debug)]
 struct FdBody(RawFd);
 
+// Note: no tracing for FdBody as it may be shared by multiple threads
+// Note 2: why does that lead to a deadlock?
 impl Drop for FdBody {
     fn drop(&mut self) {
-        TRACE!(ATEN_FD_DROP { FD: self.0 });
         unsafe { libc::close(self.0) };
     }
 } // impl Drop for FdBody
@@ -338,22 +360,42 @@ impl Disk {
                 let front_body = front.borrow();
                 let front_key = (front_body.expires, front_body.uid);
                 if first_key < front_key {
+                    TRACE!(ATEN_DISK_POLL_TIMER_EXPIRED {
+                        DISK: self, TIMER: first_body.uid,
+                        ACTION: &first_body.action,
+                    });
                     return NextStep::TimerExpired(
                         first_body.expires, first_body.uid);
                 }
+                TRACE!(ATEN_DISK_POLL_IMMEDIATE {
+                    DISK: self, TIMER: front_body.uid,
+                    ACTION: &front_body.action,
+                });
                 return NextStep::ImmediateAction;
             }
             if first_body.expires <= now {
+                TRACE!(ATEN_DISK_POLL_TIMER_EXPIRED {
+                    DISK: self, TIMER: first_body.uid,
+                    ACTION: &first_body.action,
+                });
                 return NextStep::TimerExpired(
                     first_body.expires, first_body.uid);
             }
+            TRACE!(ATEN_DISK_POLL_SLEEP {
+                DISK: self, UNTIL: r3::time(first_body.expires),
+            });
             return NextStep::NextTimerExpiry(first_body.expires);
         }
-        if body.immediate.is_empty() {
-            NextStep::InfiniteWait
-        } else {
-            NextStep::ImmediateAction
+        if let Some(front) = body.immediate.front() {
+            let front_body = front.borrow();
+            TRACE!(ATEN_DISK_POLL_IMMEDIATE {
+                DISK: self, TIMER: front_body.uid,
+                ACTION: &front_body.action,
+            });
+            return NextStep::ImmediateAction;
         }
+        TRACE!(ATEN_DISK_POLL_IDLE { DISK: self });
+        NextStep::InfiniteWait
     }
 
     fn pop_timer(&self) -> PoppedTimer {
@@ -366,6 +408,7 @@ impl Disk {
                         if let TimerKind::Canceled = timer_body.kind {
                             TRACE!(ATEN_DISK_POLL_TIMER_CANCELED {
                                 DISK: self, TIMER: timer_body.uid,
+                                ACTION: &timer_body.action,
                             });
                             continue
                         }
