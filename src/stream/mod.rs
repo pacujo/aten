@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use std::cell::RefCell;
-use std::io::Result;
+use std::io::{Result, Read};
 use std::rc::Rc;
 
 use crate::{Link, UID, DECLARE_LINKS};
@@ -38,6 +38,12 @@ pub trait ByteStreamBody {
 }
 
 pub trait DebuggableByteStreamBody: ByteStreamBody + std::fmt::Debug {}
+
+impl Read for ByteStream {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+        self.0.body.borrow_mut().read(buf)
+    }
+}
 
 DECLARE_LINKS!(ByteStreamPair, WeakByteStreamPair,
                dyn DebuggableByteStreamPairBody,
@@ -115,7 +121,7 @@ macro_rules! DECLARE_STREAM_NO_DROP {
         impl $crate::stream::ByteStreamBody for StreamBody {
             fn register_callback(&mut self, callback: $crate::Action) {
                 TRACE!($ATEN_STREAM_REGISTER_CALLBACK {
-                    STREAM: self, CALLBACK: &callback
+                    STREAM: self, ACTION: &callback
                 });
                 self.base.register_callback(callback);
             }
@@ -179,13 +185,6 @@ macro_rules! IMPL_STREAM {
             $crate::stream::ByteStream::new(self.0.uid, self.0.body.clone())
         }
 
-//        pub fn downgrade(&self) -> WeakStream {
-//            WeakStream($crate::WeakLink {
-//                uid: self.0.uid,
-//                body: std::rc::Rc::downgrade(&self.0.body),
-//            })
-//        }
-
         pub fn read(&self, buf: &mut [u8]) -> std::io::Result<usize> {
             self.0.body.borrow_mut().read(buf)
         }
@@ -201,10 +200,18 @@ macro_rules! IMPL_STREAM {
         pub fn register_wrappee_callback(
             &self, wrappee: &$crate::stream::ByteStream) {
             let weak_stream = self.downgrade();
+            let uid = self.0.uid;
             wrappee.register_callback($crate::Action::new(move || {
-                weak_stream.upped(|stream| {
-                    stream.invoke_callback();
-                });
+                match weak_stream.upgrade() {
+                    Some(stream) => {
+                        stream.invoke_callback();
+                    }
+                    None => {
+                        r3::TRACE!(ATEN_STREAM_WRAPPEE_UPPED_MISS {
+                            STREAM: uid
+                        });
+                    }
+                }
             }));
         }
     }
