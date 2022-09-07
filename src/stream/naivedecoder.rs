@@ -55,11 +55,12 @@ impl StreamBody {
                     return Ok(wi);
                 }
                 if let Some(disk) = self.base.get_weak_disk().upgrade() {
-                    let q = queue::Stream::new(&disk);
+                    let q = queue::Stream::new(&disk, None);
                     q.enqueue(
                         blob::Stream::new(&disk, buf[ri..].to_vec())
                             .as_bytestream());
                     q.enqueue(self.wrappee.clone());
+                    q.terminate();
                     self.state = State::Terminated(q.as_bytestream());
                     return Ok(wi);
                 }

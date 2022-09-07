@@ -76,7 +76,7 @@ impl Stream {
             capacity: capacity,
             amount: 0,
             eof_reached: false,
-            storage: queue::Stream::new(&disk),
+            storage: queue::Stream::new(&disk, None),
         }));
         let stream = Stream(Link {
             uid: uid,
