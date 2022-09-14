@@ -4,7 +4,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::thread::JoinHandle;
 
-use crate::{Disk, WeakDisk, UID, Action, Link, Downgradable, error};
+use crate::{Disk, WeakDisk, UID, Action, Link, Downgradable, Upgradable, error};
 use crate::DECLARE_LINKS;
 use crate::stream::ByteStream;
 use crate::misc::pipe;

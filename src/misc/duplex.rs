@@ -3,10 +3,11 @@ use std::cell::RefCell;
 use std::io::Result;
 
 use crate::{Disk, Link, UID, Action, Registration, Fd};
-use crate::{Downgradable, DECLARE_LINKS, IMPL_STREAM};
+use crate::{Downgradable, Upgradable, DECLARE_LINKS};
 use crate::stream::{ByteStream, ByteStreamBody, DebuggableByteStreamBody};
 use crate::stream::{ByteStreamPair, ByteStreamPairBody};
 use crate::stream::{DebuggableByteStreamPairBody};
+use crate::stream::{BasicStream, BasicStreamBody};
 use crate::stream::{base, switch, file, dry};
 use crate::misc::Linger;
 use r3::{TRACE, Traceable};
@@ -104,8 +105,6 @@ impl Drop for DuplexBody {
 DECLARE_LINKS!(Duplex, WeakDuplex, DuplexBody, ATEN_DUPLEX_UPPED_MISS, DUPLEX);
 
 impl Duplex {
-    IMPL_STREAM!();
-
     pub fn new(disk: &Disk, fd: &Fd) -> Result<Duplex> {
         let uid = UID::new();
         let eswitch = switch::Stream::new(
@@ -168,3 +167,11 @@ impl Duplex {
         self.0.body.borrow().notify();
     }
 } // impl Duplex
+
+impl BasicStreamBody for DuplexBody {
+    fn get_base(&self) -> &base::StreamBody { &self.base }
+}
+
+impl BasicStream<WeakDuplex, DuplexBody> for Duplex {
+    fn get_link(&self) -> &Link<DuplexBody> { &self.0 }
+}

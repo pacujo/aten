@@ -215,6 +215,11 @@ pub trait Downgradable<T> {
     fn downgrade(&self) -> T;
 }
 
+pub trait Upgradable<T> {
+    fn upgrade(&self) -> Option<T>;
+    fn upped<F, R>(&self, f: F) -> Option<R> where F: Fn(&T) -> R;
+}
+
 DECLARE_LINKS!(Disk, WeakDisk, DiskBody, ATEN_DISK_UPPED_MISS, DISK);
 
 impl Disk {
@@ -1043,8 +1048,8 @@ macro_rules! DECLARE_LINKS {
 
         pub struct $Weak($crate::WeakLink<$Body>);
 
-        impl $Weak {
-            pub fn upgrade(&self) -> Option<$Strong> {
+        impl $crate::Upgradable<$Strong> for $Weak {
+            fn upgrade(&self) -> Option<$Strong> {
                 self.0.body.upgrade().map(|body|
                                           $Strong($crate::Link {
                                               uid: self.0.uid,
@@ -1052,7 +1057,7 @@ macro_rules! DECLARE_LINKS {
                                           }))
             }
 
-            pub fn upped<F, R>(&self, f: F) -> Option<R>
+            fn upped<F, R>(&self, f: F) -> Option<R>
             where F: Fn(&$Strong) -> R {
                 match self.upgrade() {
                     Some(thing) => Some(f(&thing)),

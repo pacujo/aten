@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 use std::os::unix::io::{AsRawFd};
 
 use crate::{Disk, WeakDisk, Link, UID, Action, Fd, Registration};
-use crate::{Downgradable, nonblock, error, DECLARE_LINKS};
+use crate::{Downgradable, Upgradable, nonblock, error, DECLARE_LINKS};
 use crate::misc::duplex::Duplex;
 use crate::stream::ByteStreamPair;
 use r3::{TRACE, Traceable};

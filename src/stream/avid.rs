@@ -3,10 +3,12 @@ use std::cell::RefCell;
 use std::io::Result;
 
 use crate::{Disk, Link, UID, Downgradable};
-use crate::stream::{ByteStream, ByteStreamBody, base};
+use crate::stream::{ByteStream, BasicStream};
+use crate::stream::base;
 use r3::{TRACE, Traceable};
 
 DECLARE_STREAM!(
+    Stream, WeakStream, StreamBody,
     ATEN_AVIDSTREAM_DROP,
     ATEN_AVIDSTREAM_UPPED_MISS,
     ATEN_AVIDSTREAM_REGISTER_CALLBACK,
@@ -46,8 +48,6 @@ impl StreamBody {
 }
 
 impl Stream {
-    IMPL_STREAM!();
-
     pub fn new(disk: &Disk, wrappee: ByteStream) -> Stream {
         let uid = UID::new();
         TRACE!(ATEN_AVIDSTREAM_CREATE {

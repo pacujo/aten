@@ -2,11 +2,12 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::io::Result;
 
-use crate::{Disk, Link, UID, Action, Downgradable};
-use crate::stream::{ByteStream, ByteStreamBody, base};
+use crate::{Disk, Link, UID, Action, Downgradable, Upgradable};
+use crate::stream::{ByteStream, BasicStream, base};
 use r3::{TRACE, Traceable};
 
 DECLARE_STREAM_NO_DROP!(
+    Stream, WeakStream, StreamBody,
     ATEN_FAREWELLSTREAM_UPPED_MISS,
     ATEN_FAREWELLSTREAM_REGISTER_CALLBACK,
     ATEN_FAREWELLSTREAM_UNREGISTER_CALLBACK,
@@ -38,8 +39,6 @@ impl Drop for StreamBody {
 } // impl Drop for StreamBody
 
 impl Stream {
-    IMPL_STREAM!();
-
     pub fn new(disk: &Disk, wrappee: ByteStream) -> Stream {
         let uid = UID::new();
         TRACE!(ATEN_FAREWELLSTREAM_CREATE {

@@ -3,11 +3,12 @@ use std::cell::RefCell;
 use std::io::Result;
 use std::time::{Instant, Duration};
 
-use crate::{Disk, Link, Action, UID, Timer, Downgradable, error};
-use crate::stream::{ByteStream, ByteStreamBody, base};
+use crate::{Disk, Link, Action, UID, Timer, Downgradable, Upgradable, error};
+use crate::stream::{ByteStream, BasicStream, base};
 use r3::{TRACE, Traceable};
 
 DECLARE_STREAM!(
+    Stream, WeakStream, StreamBody,
     ATEN_PACERSTREAM_DROP,
     ATEN_PACERSTREAM_UPPED_MISS,
     ATEN_PACERSTREAM_REGISTER_CALLBACK,
@@ -82,8 +83,6 @@ impl StreamBody {
 }
 
 impl Stream {
-    IMPL_STREAM!();
-
     pub fn new(disk: &Disk,
                wrappee: ByteStream,
                byterate: f64,

@@ -2,11 +2,13 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::io::Result;
 
-use crate::{Disk, Link, UID, Downgradable, error};
-use crate::stream::{ByteStream, ByteStreamBody, base, queue, blob};
+use crate::{Disk, Link, UID, Downgradable, Upgradable, error};
+use crate::stream::{ByteStream, ByteStreamBody, BasicStream};
+use crate::stream::{base, queue, blob};
 use r3::{TRACE, Traceable};
 
 DECLARE_STREAM!(
+    Stream, WeakStream, StreamBody,
     ATEN_NAIVEDECODER_DROP,
     ATEN_NAIVEDECODER_UPPED_MISS,
     ATEN_NAIVEDECODER_REGISTER_CALLBACK,
@@ -108,8 +110,6 @@ impl StreamBody {
 }
 
 impl Stream {
-    IMPL_STREAM!();
-
     pub fn new(disk: &Disk,
                wrappee: ByteStream,
                terminator: u8,

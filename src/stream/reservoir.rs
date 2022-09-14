@@ -2,11 +2,12 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::io::Result;
 
-use crate::{Disk, Link, UID, Downgradable, error};
-use crate::stream::{ByteStream, ByteStreamBody, base, queue, blob};
+use crate::{Disk, Link, UID, Downgradable, Upgradable, error};
+use crate::stream::{ByteStream, BasicStream, base, queue, blob};
 use r3::{TRACE, Traceable};
 
 DECLARE_STREAM!(
+    Stream, WeakStream, StreamBody,
     ATEN_RESERVOIR_DROP,
     ATEN_RESERVOIR_UPPED_MISS,
     ATEN_RESERVOIR_REGISTER_CALLBACK,
@@ -63,8 +64,6 @@ impl StreamBody {
 }
 
 impl Stream {
-    IMPL_STREAM!();
-
     pub fn new(disk: &Disk, wrappee: ByteStream, capacity: usize) -> Stream {
         let uid = UID::new();
         TRACE!(ATEN_RESERVOIR_CREATE {

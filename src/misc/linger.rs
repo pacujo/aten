@@ -4,7 +4,7 @@ use std::io::{Error, Result};
 use std::os::unix::io::AsRawFd;
 
 use crate::{Disk, WeakDisk, Link, UID, Action, Registration, Fd};
-use crate::{Downgradable, error, DECLARE_LINKS};
+use crate::{Downgradable, Upgradable, error, DECLARE_LINKS};
 use crate::stream::ByteStream;
 use r3::{TRACE, Traceable};
 

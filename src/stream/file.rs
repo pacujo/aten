@@ -3,11 +3,12 @@ use std::cell::RefCell;
 use std::io::{Result, Error};
 use std::os::unix::io::AsRawFd;
 
-use crate::{Disk, Link, Action, UID, Registration, Fd, Downgradable};
-use crate::stream::{ByteStreamBody, base};
+use crate::{Disk, Link, Action, UID, Registration, Fd, Downgradable, Upgradable};
+use crate::stream::{BasicStream, base};
 use r3::{TRACE, Traceable};
 
 DECLARE_STREAM!(
+    Stream, WeakStream, StreamBody,
     ATEN_FILESTREAM_DROP,
     ATEN_FILESTREAM_UPPED_MISS,
     ATEN_FILESTREAM_REGISTER_CALLBACK,
@@ -18,7 +19,7 @@ DECLARE_STREAM!(
     ATEN_FILESTREAM_READ_FAIL);
 
 #[derive(Debug)]
-struct StreamBody {
+pub struct StreamBody {
     base: base::StreamBody,
     fd: Fd,
     registration: Option<Registration>,
@@ -39,8 +40,6 @@ impl StreamBody {
 }
 
 impl Stream {
-    IMPL_STREAM!();
-
     pub fn new(disk: &Disk, fd: &Fd, sync: bool) -> Result<Stream> {
         let uid = UID::new();
         let body = StreamBody {

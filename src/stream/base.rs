@@ -1,6 +1,6 @@
 use std::io::Result;
 
-use crate::{WeakDisk, UID, Action, error};
+use crate::{WeakDisk, UID, Action, Upgradable, error};
 use crate::stream::{ByteStreamBody};
 use r3::{TRACE, Traceable};
 

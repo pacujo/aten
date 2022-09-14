@@ -4,7 +4,8 @@ use std::cell::RefCell;
 use std::io::{Result, Read};
 use std::rc::Rc;
 
-use crate::{Link, UID, DECLARE_LINKS};
+use crate::{Link, UID, Action, Downgradable, Upgradable, DECLARE_LINKS};
+use r3::{TRACE, Traceable};
 
 DECLARE_LINKS!(ByteStream, WeakByteStream, dyn DebuggableByteStreamBody,
                ATEN_BYTESTREAM_UPPED_MISS, STREAM);
@@ -76,7 +77,10 @@ pub trait DebuggableByteStreamPairBody: ByteStreamPairBody + std::fmt::Debug {}
 
 #[macro_export]
 macro_rules! DECLARE_STREAM {
-    ($ATEN_STREAM_DROP:ident,
+    ($Stream:ident,
+     $WeakStream:ident,
+     $StreamBody:ident,
+     $ATEN_STREAM_DROP:ident,
      $ATEN_STREAM_UPPED_MISS:ident,
      $ATEN_STREAM_REGISTER_CALLBACK:ident,
      $ATEN_STREAM_UNREGISTER_CALLBACK:ident,
@@ -84,8 +88,10 @@ macro_rules! DECLARE_STREAM {
      $ATEN_STREAM_READ:ident,
      $ATEN_STREAM_READ_DUMP:ident,
      $ATEN_STREAM_READ_FAIL:ident) => {
-        DECLARE_STREAM_DROP!($ATEN_STREAM_DROP);
-        DECLARE_STREAM_NO_DROP!($ATEN_STREAM_UPPED_MISS,
+        DECLARE_STREAM_DROP!($StreamBody,
+                             $ATEN_STREAM_DROP);
+        DECLARE_STREAM_NO_DROP!($Stream, $WeakStream, $StreamBody,
+                                $ATEN_STREAM_UPPED_MISS,
                                 $ATEN_STREAM_REGISTER_CALLBACK,
                                 $ATEN_STREAM_UNREGISTER_CALLBACK,
                                 $ATEN_STREAM_READ_TRIVIAL,
@@ -97,8 +103,9 @@ macro_rules! DECLARE_STREAM {
 
 #[macro_export]
 macro_rules! DECLARE_STREAM_DROP {
-    ($ATEN_STREAM_DROP:ident) => {
-        impl Drop for StreamBody {
+    ($StreamBody:ident,
+     $ATEN_STREAM_DROP:ident) => {
+        impl Drop for $StreamBody {
             fn drop(&mut self) {
                 TRACE!($ATEN_STREAM_DROP { STREAM: self });
             }
@@ -108,49 +115,52 @@ macro_rules! DECLARE_STREAM_DROP {
 
 #[macro_export]
 macro_rules! DECLARE_STREAM_NO_DROP {
-    ($ATEN_STREAM_UPPED_MISS:ident,
+    ($Stream:ident,
+     $WeakStream:ident,
+     $StreamBody:ident,
+     $ATEN_STREAM_UPPED_MISS:ident,
      $ATEN_STREAM_REGISTER_CALLBACK:ident,
      $ATEN_STREAM_UNREGISTER_CALLBACK:ident,
      $ATEN_STREAM_READ_TRIVIAL:ident,
      $ATEN_STREAM_READ:ident,
      $ATEN_STREAM_READ_DUMP:ident,
      $ATEN_STREAM_READ_FAIL:ident) => {
-        $crate::DECLARE_LINKS!(Stream, WeakStream, StreamBody,
-                               $ATEN_STREAM_UPPED_MISS, STREAM);
+        $crate::DECLARE_LINKS!($Stream, WeakStream, StreamBody,
+                               $ATEN_STREAM_UPPED_MISS, STREAMD);
 
-        impl $crate::stream::ByteStreamBody for StreamBody {
+        impl $crate::stream::ByteStreamBody for $StreamBody {
             fn register_callback(&mut self, callback: $crate::Action) {
                 TRACE!($ATEN_STREAM_REGISTER_CALLBACK {
-                    STREAM: self, ACTION: &callback
+                    STREAMD: self, ACTION: &callback
                 });
                 self.base.register_callback(callback);
             }
 
             fn unregister_callback(&mut self) {
-                TRACE!($ATEN_STREAM_UNREGISTER_CALLBACK { STREAM: self });
+                TRACE!($ATEN_STREAM_UNREGISTER_CALLBACK { STREAMD: self });
                 self.base.unregister_callback();
             }
 
             fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
                 if let Ok(_) = self.base.read(buf) {
                     TRACE!($ATEN_STREAM_READ_TRIVIAL {
-                        STREAM: self, WANT: buf.len()
+                        STREAMD: self, WANT: buf.len()
                     });
                     return Ok(0);
                 }
                 match self.read_nontrivial(buf) {
                     Ok(count) => {
                         TRACE!($ATEN_STREAM_READ {
-                            STREAM: self, WANT: buf.len(), GOT: count
+                            STREAMD: self, WANT: buf.len(), GOT: count
                         });
                         TRACE!($ATEN_STREAM_READ_DUMP {
-                            STREAM: self, DATA: r3::octets(&buf[..count])
+                            STREAMD: self, DATA: r3::octets(&buf[..count])
                         });
                         Ok(count)
                     }
                     Err(err) => {
                         TRACE!($ATEN_STREAM_READ_FAIL {
-                            STREAM: self, WANT: buf.len(), ERR: r3::errsym(&err)
+                            STREAMD: self, WANT: buf.len(), ERR: r3::errsym(&err)
                         });
                         Err(err)
                     }
@@ -158,62 +168,77 @@ macro_rules! DECLARE_STREAM_NO_DROP {
             }
         }
 
-        impl std::fmt::Display for StreamBody {
+        impl std::fmt::Display for $StreamBody {
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 write!(f, "{}", self.base)
             }
         }
 
-        impl $crate::stream::DebuggableByteStreamBody for StreamBody {}
+        impl $crate::stream::DebuggableByteStreamBody for $StreamBody {}
 
-        impl From<Stream> for $crate::stream::ByteStream {
-            fn from(stream: Stream) -> $crate::stream::ByteStream {
+        impl From<$Stream> for $crate::stream::ByteStream {
+            fn from(stream: $Stream) -> $crate::stream::ByteStream {
                 stream.as_bytestream()
             }
         }
+
+        impl $crate::stream::BasicStreamBody for $StreamBody {
+            fn get_base(&self) -> &$crate::stream::base::StreamBody {
+                &self.base
+            }
+        }
+
+        impl $crate::stream::BasicStream<$WeakStream, $StreamBody>
+            for $Stream {
+                fn get_link(&self) -> &$crate::Link<$StreamBody> { &self.0 }
+            }
     }
 }
 
-#[macro_export]
-macro_rules! IMPL_STREAM {
-    () => {
-        pub fn invoke_callback(&self) {
-            self.0.body.borrow().base.invoke_callback();
-        }
+pub trait BasicStreamBody {
+    fn get_base(&self) -> &base::StreamBody;
+}
 
-        pub fn as_bytestream(&self) -> $crate::stream::ByteStream {
-            $crate::stream::ByteStream::new(self.0.uid, self.0.body.clone())
-        }
+pub trait BasicStream<W, B>: Downgradable<W> + Sized where
+    W: Upgradable<Self> + 'static,
+    B: BasicStreamBody + DebuggableByteStreamBody + 'static,
+{
+    fn get_link(&self) -> &Link<B>;
 
-        pub fn read(&self, buf: &mut [u8]) -> std::io::Result<usize> {
-            self.0.body.borrow_mut().read(buf)
-        }
+    fn invoke_callback(&self) {
+        self.get_link().body.borrow().get_base().invoke_callback();
+    }
 
-        pub fn register_callback(&self, callback: $crate::Action) {
-            self.0.body.borrow_mut().register_callback(callback);
-        }
+    fn as_bytestream(&self) -> ByteStream {
+        let link = self.get_link();
+        ByteStream::new(link.uid, link.body.clone())
+    }
 
-        pub fn unregister_callback(&self) {
-            self.0.body.borrow_mut().unregister_callback();
-        }
+    fn read(&self, buf: &mut [u8]) -> Result<usize> {
+        self.get_link().body.borrow_mut().read(buf)
+    }
 
-        pub fn register_wrappee_callback(
-            &self, wrappee: &$crate::stream::ByteStream) {
-            let weak_stream = self.downgrade();
-            let uid = self.0.uid;
-            wrappee.register_callback($crate::Action::new(move || {
-                match weak_stream.upgrade() {
-                    Some(stream) => {
-                        stream.invoke_callback();
-                    }
-                    None => {
-                        r3::TRACE!(ATEN_STREAM_WRAPPEE_UPPED_MISS {
-                            STREAM: uid
-                        });
-                    }
+    fn register_callback(&self, callback: Action) {
+        self.get_link().body.borrow_mut().register_callback(callback);
+    }
+
+    fn unregister_callback(&self) {
+        self.get_link().body.borrow_mut().unregister_callback();
+    }
+
+    fn register_wrappee_callback(&self, wrappee: &ByteStream) {
+        let weak_stream = self.downgrade();
+        let uid = self.get_link().uid;
+        wrappee.register_callback(Action::new(move || {
+            match weak_stream.upgrade() {
+                Some(stream) => {
+                    stream.invoke_callback();
                 }
-            }));
-        }
+                None => {
+                    TRACE!(ATEN_STREAM_WRAPPEE_UPPED_MISS { STREAM: uid });
+                }
+            }
+        }));
     }
 }
 

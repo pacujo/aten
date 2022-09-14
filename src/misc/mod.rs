@@ -1,7 +1,7 @@
 use std::io::{Result, Error};
 
 use crate::{Disk, Fd};
-use crate::stream::{ByteStream, file};
+use crate::stream::{ByteStream, BasicStream, file};
 
 pub mod linger;
 pub use linger::{Linger, WeakLinger};

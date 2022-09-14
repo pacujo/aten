@@ -3,11 +3,12 @@ use std::cell::RefCell;
 use std::collections::LinkedList;
 use std::io::{Result, Error, Write};
 
-use crate::{Disk, Link, UID, Downgradable, error};
-use crate::stream::{ByteStream, ByteStreamBody, base, blob};
+use crate::{Disk, Link, UID, Downgradable, Upgradable, error};
+use crate::stream::{ByteStream, BasicStream, base, blob};
 use r3::{TRACE, Traceable};
 
 DECLARE_STREAM!(
+    Stream, WeakStream, StreamBody,
     ATEN_QUEUESTREAM_DROP,
     ATEN_QUEUESTREAM_UPPED_MISS,
     ATEN_QUEUESTREAM_REGISTER_CALLBACK,
@@ -86,8 +87,6 @@ impl std::fmt::Debug for StreamBody {
 pub trait Supplier {}
 
 impl Stream {
-    IMPL_STREAM!();
-
     pub fn new(disk: &Disk, supplier: Option<Rc<RefCell<dyn Supplier>>>)
                -> Stream {
         let uid = UID::new();

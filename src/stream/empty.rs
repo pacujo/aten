@@ -3,10 +3,11 @@ use std::cell::RefCell;
 use std::io::Result;
 
 use crate::{Disk, Link, UID, Downgradable};
-use crate::stream::{ByteStreamBody, base};
+use crate::stream::{BasicStream, base};
 use r3::{TRACE, Traceable};
 
 DECLARE_STREAM!(
+    Stream, WeakStream, StreamBody,
     ATEN_EMPTYSTREAM_DROP,
     ATEN_EMPTYSTREAM_UPPED_MISS,
     ATEN_EMPTYSTREAM_REGISTER_CALLBACK,
@@ -17,7 +18,7 @@ DECLARE_STREAM!(
     ATEN_EMPTYSTREAM_READ_FAIL);
 
 #[derive(Debug)]
-struct StreamBody {
+pub struct StreamBody {
     base: base::StreamBody,
 }
 
@@ -28,8 +29,6 @@ impl StreamBody {
 }
 
 impl Stream {
-    IMPL_STREAM!();
-
     pub fn new(disk: &Disk) -> Stream {
         let uid = UID::new();
         TRACE!(ATEN_EMPTYSTREAM_CREATE { DISK: disk, STREAM: uid });
